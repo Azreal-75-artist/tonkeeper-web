@@ -16,7 +16,6 @@ import { useAllChainsAssets } from '../../state/home';
 import { useMutateUserUIPreferences, useUserUIPreferences } from '../../state/theme';
 
 import { useAssetsDistribution } from '../../state/asset';
-import { TronAssets } from '../../components/home/TronAssets';
 import { useActiveTronWallet, useCanUseTronForActiveWallet } from '../../state/tron/tron';
 import { TON_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
 
@@ -31,12 +30,6 @@ const DesktopAssetStylesOverride = css`
 `;
 
 const TonAssetStyled = styled(TonAsset)`
-    margin: 0 -16px;
-
-    ${DesktopAssetStylesOverride}
-`;
-
-const TronAssetsStyled = styled(TronAssets)`
     margin: 0 -16px;
 
     ${DesktopAssetStylesOverride}
@@ -97,9 +90,6 @@ const DesktopTokensPayload = () => {
     const tonRef = useRef<HTMLDivElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
 
-    const tronWallet = useActiveTronWallet();
-    const canUseTron = useCanUseTronForActiveWallet();
-
     useLayoutEffect(() => {
         if (uiPreferences?.showTokensChart !== undefined) {
             setShowChart(uiPreferences.showTokensChart);
@@ -113,7 +103,7 @@ const DesktopTokensPayload = () => {
         setShowChart(!showChart);
     };
 
-    const virtualScrollPaddingBase = canUseTron && !tronWallet ? 2 * itemSize : itemSize;
+    const virtualScrollPaddingBase = itemSize; // TON LINE
 
     const rowVirtualizer = useVirtualizer({
         count: assets?.length ?? 0,
@@ -182,12 +172,6 @@ const DesktopTokensPayload = () => {
                         )}
                         <TonAssetStyled ref={tonRef} balance={tonAssetAmount} />
                         <Divider />
-                        {canUseTron && !tronWallet && (
-                            <>
-                                <TronAssetsStyled usdt={null} />
-                                <Divider />
-                            </>
-                        )}
                         {rowVirtualizer.getVirtualItems().map(virtualRow => (
                             <div
                                 key={virtualRow.index}

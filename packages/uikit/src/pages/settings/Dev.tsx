@@ -3,16 +3,21 @@ import { InnerBody } from '../../components/Body';
 import { SubHeader } from '../../components/SubHeader';
 import { SettingsItem, SettingsList } from '../../components/settings/SettingsList';
 import { useAppSdk } from '../../hooks/appSdk';
-import { CloseIcon, SpinnerIcon } from '../../components/Icon';
+import { CloseIcon, SpinnerIcon, PlusIcon } from '../../components/Icon';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppKey } from '@tonkeeper/core/dist/Keys';
 import { ListBlock, ListItem, ListItemPayload } from '../../components/List';
-import { Body3, Label1 } from '../../components/Text';
+import { Label1 } from '../../components/Text';
 import { Switch } from '../../components/fields/Switch';
 import { Badge } from '../../components/shared';
 import styled from 'styled-components';
 import { useDevSettings, useMutateDevSettings } from '../../state/dev';
 import { useActiveConfig } from '../../state/wallet';
+import { useDisclosure } from '../../hooks/useDisclosure';
+import { Notification } from '../../components/Notification';
+import { ImportBySKWallet } from '../import/ImportBySKWallet';
+import { AddWalletContext } from '../../components/create/AddWalletContext';
+import { useNavigate } from 'react-router-dom';
 
 const CookieSettings = () => {
     const sdk = useAppSdk();
@@ -40,15 +45,6 @@ const CookieSettings = () => {
 
     return <SettingsList items={items} />;
 };
-
-const TextColumns = styled.div`
-    display: flex;
-    flex-direction: column;
-
-    & > ${Body3} {
-        color: ${p => p.theme.textSecondary};
-    }
-`;
 
 const TextAndBadge = styled.div`
     display: flex;
@@ -86,33 +82,36 @@ const EnableTwoFASettings = () => {
     );
 };
 
-const EnableTronSettings = () => {
-    const { mutate: mutateSettings } = useMutateDevSettings();
-    const { data: devSettings } = useDevSettings();
+const AddAccountBySK = () => {
+    const { isOpen, onClose, onOpen } = useDisclosure();
+    const navigate = useNavigate();
 
-    const config = useActiveConfig();
-    if (config.flags?.disable_tron) {
-        return null;
-    }
+    const items = useMemo<SettingsItem[]>(() => {
+        return [
+            {
+                name: 'Add account with private key',
+                icon: <PlusIcon />,
+                action: () => onOpen()
+            }
+        ];
+    }, [onOpen]);
 
     return (
-        <ListBlock>
-            <ListItem hover={false}>
-                <ListItemPayload>
-                    <TextColumns>
-                        <TextAndBadge>
-                            <Label1>Enable TRON USDT</Label1>
-                            <Badge color="accentRed">Experimental</Badge>
-                        </TextAndBadge>
-                    </TextColumns>
-                    <Switch
-                        disabled={!devSettings}
-                        checked={!!devSettings?.tronEnabled}
-                        onChange={checked => mutateSettings({ tronEnabled: checked })}
-                    />
-                </ListItemPayload>
-            </ListItem>
-        </ListBlock>
+        <>
+            <SettingsList items={items} />
+            <AddWalletContext.Provider value={{ navigateHome: onClose }}>
+                <Notification isOpen={isOpen} handleClose={onClose}>
+                    {() => (
+                        <ImportBySKWallet
+                            afterCompleted={() => {
+                                onClose();
+                                navigate('/');
+                            }}
+                        />
+                    )}
+                </Notification>
+            </AddWalletContext.Provider>
+        </>
     );
 };
 
@@ -122,8 +121,8 @@ export const DevSettings = React.memo(() => {
             <SubHeader title="Dev Menu" />
             <InnerBody>
                 <EnableTwoFASettings />
-                <EnableTronSettings />
                 <CookieSettings />
+                <AddAccountBySK />
             </InnerBody>
         </>
     );
