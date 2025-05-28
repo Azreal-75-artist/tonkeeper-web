@@ -3,7 +3,7 @@ import {
     TonendpoinFiatItem
 } from '@tonkeeper/core/dist/tonkeeperApi/tonendpoint';
 import React, { FC, useCallback, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import styled, { css } from 'styled-components';
 import { useAppSdk } from '../../hooks/appSdk';
 import { useTranslation } from '../../hooks/translation';
@@ -19,12 +19,14 @@ import {
     NotificationTitleBlock
 } from '../Notification';
 import { H3, Label2 } from '../Text';
-import { CommonCountryButton } from '../fields/RoundedButton';
+import { CommonCountryBadge } from '../fields/RoundedButton';
 import { Action } from './Actions';
 import { BuyItemNotification } from './BuyItemNotification';
 import { BuyIcon, SellIcon } from './HomeIcons';
 import { useActiveConfig } from '../../state/wallet';
 import { HideOnReview } from '../ios/HideOnReview';
+import { useSearchParams } from '../../hooks/router/useSearchParams';
+import { useNavigate } from '../../hooks/router/useNavigate';
 
 const BuyList: FC<{ items: TonendpoinFiatItem[]; kind: 'buy' | 'sell' }> = ({ items, kind }) => {
     return (
@@ -48,7 +50,6 @@ const ActionNotification: FC<{
     kind: 'buy' | 'sell';
     handleClose: () => void;
 }> = ({ item, kind, handleClose }) => {
-    const navigate = useNavigate();
     const sdk = useAppSdk();
 
     const { data: country } = useUserCountry();
@@ -60,10 +61,7 @@ const ActionNotification: FC<{
             <NotificationHeaderPortal>
                 <NotificationHeader>
                     <NotificationTitleBlock>
-                        <CommonCountryButton
-                            country={country}
-                            onClick={() => navigate(AppRoute.settings + SettingsRoute.country)}
-                        />
+                        <CommonCountryBadge country={country} />
                         <H3>{item.title}</H3>
                         <NotificationCancelButton handleClose={handleClose} />
                     </NotificationTitleBlock>

@@ -8,9 +8,11 @@ const BadgeStyled = styled.div<{
     display: string;
     size: 'm' | 's';
     background?: string;
+    $marginLeft?: string;
 }>`
     display: ${p => p.display};
     flex-shrink: 0;
+    height: fit-content;
 
     ${p =>
         p.size === 'm'
@@ -36,6 +38,12 @@ const BadgeStyled = styled.div<{
     text-transform: uppercase;
 
     font-style: normal;
+
+    ${p =>
+        p.$marginLeft &&
+        css`
+            margin-left: ${p.$marginLeft};
+        `}
 `;
 
 export const Badge: FC<
@@ -45,14 +53,17 @@ export const Badge: FC<
         display?: string;
         size?: 'm' | 's';
         background?: string;
+        marginLeft?: string;
     }>
-> = ({ color, className, children, display = 'block', size = 'm' }) => {
+> = ({ color, className, children, display = 'block', size = 'm', marginLeft, background }) => {
     return (
         <BadgeStyled
             className={className}
             color={color || 'accentBlue'}
             display={display}
             size={size}
+            $marginLeft={marginLeft}
+            background={background}
         >
             {children}
         </BadgeStyled>
@@ -69,6 +80,7 @@ export const RoundedBadge = styled.div`
     padding: 0 4px;
     aspect-ratio: 1 / 1;
     box-sizing: border-box;
+    min-width: 16px;
 
     ${Label3Class};
 `;

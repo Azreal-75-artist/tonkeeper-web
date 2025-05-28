@@ -6,7 +6,7 @@ import { useAppContext } from '../../../hooks/appContext';
 import { useTranslation } from '../../../hooks/translation';
 import { Gap } from '../../Layout';
 import { ListBlock } from '../../List';
-import { FullHeightBlock } from '../../Notification';
+import { FullHeightBlock, NotificationFooter, NotificationFooterPortal } from '../../Notification';
 
 import { AssetAmount } from '@tonkeeper/core/dist/entries/crypto/asset/asset-amount';
 import { TON_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
@@ -49,8 +49,8 @@ import { comment } from '@ton/core';
 import { useNotifyErrorHandle } from '../../../hooks/useNotification';
 import { zeroFeeEstimation } from '@tonkeeper/core/dist/service/ton-blockchain/utils';
 import { useToQueryKeyPart } from '../../../hooks/useToQueryKeyPart';
-import { TonAsset } from '@tonkeeper/core/dist/entries/crypto/asset/ton-asset';
-import { TransactionFee } from "@tonkeeper/core/dist/entries/crypto/transaction-fee";
+import { TransactionFee } from '@tonkeeper/core/dist/entries/crypto/transaction-fee';
+import { useIsFullWidthMode } from '../../../hooks/useIsFullWidthMode';
 
 const assetAmount = new AssetAmount({
     asset: TON_ASSET,
@@ -122,7 +122,7 @@ const useNftTransferEstimation = (
 const useSendNft = (
     recipient: TonRecipientData,
     nftItem: NftItem,
-    fee: TransactionFee | undefined,
+    estimation: TonEstimation | undefined,
     options: {
         multisigTTL?: MultisigOrderLifetimeMinutes;
         selectedSenderType: SenderTypeUserAvailable;
@@ -142,10 +142,10 @@ const useSendNft = (
             return false;
         }
 
-        if (!fee) return false;
+        if (!estimation) return false;
 
-        if (fee.type !== 'ton-asset' || fee.extra.asset.id !== TON_ASSET.id) {
-            throw new Error(`Unexpected fee ${fee}`);
+        if (estimation.fee.type === 'ton-asset' && estimation.fee.extra.asset.id !== TON_ASSET.id) {
+            throw new Error(`Unexpected fee ${estimation.fee}`);
         }
 
         try {
@@ -172,7 +172,7 @@ const useSendNft = (
 
             const nftEncoder = new NFTEncoder(account.activeTonWallet.rawAddress);
             const nftTransferAmountWei = new BigNumber(NFTEncoder.nftTransferBase.toString()).plus(
-                fee.extra.weiAmount
+                Math.abs(estimation.event?.extra ?? 0)
             );
             const nftTransferMsg = nftEncoder.encodeNftTransfer({
                 nftAddress: nftItem.address,
@@ -205,7 +205,19 @@ export const ConfirmNftView: FC<{
     headerBlock: ReactNode;
     mainButton: ReactNode;
     multisigTTL?: MultisigOrderLifetimeMinutes;
-}> = ({ recipient, onClose, nftItem, headerBlock, mainButton, multisigTTL }) => {
+    isAnimationProcess: boolean;
+}> = ({
+    recipient,
+    onClose,
+    nftItem,
+    headerBlock,
+    mainButton,
+    multisigTTL,
+    isAnimationProcess
+}) => {
+    const isFullWidth = useIsFullWidthMode();
+    const shouldHideHeaderAndFooter = isFullWidth && isAnimationProcess;
+
     const { standalone } = useAppContext();
     const [done, setDone] = useState(false);
     const { t } = useTranslation();
@@ -215,19 +227,24 @@ export const ConfirmNftView: FC<{
     const [selectedSenderType, onSenderTypeChange] = useState<
         SenderTypeUserAvailable | undefined
     >();
+
+    const estimation = useNftTransferEstimation(nftItem, recipient, selectedSenderType);
+    const { mutateAsync, isLoading, error, reset, isIdle } = useSendNft(
+        recipient,
+        nftItem,
+        estimation.data,
+        { multisigTTL, selectedSenderType: selectedSenderType! }
+    );
+
     useEffect(() => {
+        if (!isIdle) {
+            return;
+        }
+
         if (availableSendersChoices) {
             onSenderTypeChange(availableSendersChoices[0].type);
         }
-    }, [availableSendersChoices]);
-
-    const estimation = useNftTransferEstimation(nftItem, recipient, selectedSenderType);
-    const { mutateAsync, isLoading, error, reset } = useSendNft(
-        recipient,
-        nftItem,
-        estimation.data?.fee,
-        { multisigTTL, selectedSenderType: selectedSenderType! }
-    );
+    }, [JSON.stringify(availableSendersChoices), isIdle]);
 
     const image = nftItem.previews?.find(item => item.resolution === '100x100');
 
@@ -287,7 +304,11 @@ export const ConfirmNftView: FC<{
                 {isActiveMultisig && multisigTTL ? (
                     <MayBeMultisigDetalis ttl={multisigTTL} />
                 ) : null}
-                {mainButton}
+                {!shouldHideHeaderAndFooter && (
+                    <NotificationFooterPortal>
+                        <NotificationFooter>{mainButton}</NotificationFooter>
+                    </NotificationFooterPortal>
+                )}
             </FullHeightBlock>
         </ConfirmViewContext.Provider>
     );

@@ -3,9 +3,10 @@ import { intlLocale } from '../entries/language';
 import { Network } from '../entries/network';
 import { DAppTrack } from '../service/urlService';
 import { FetchAPI } from '../tonApiV2';
+import { assertUnreachable } from '../utils/types';
 
 export interface BootParams {
-    platform: 'ios' | 'android' | 'web' | 'desktop' | 'tablet' | 'swap_widget_web';
+    platform: 'web' | 'desktop' | 'tablet' | 'extension' | 'pro_mobile_ios' | 'swap_widget_web';
     lang: 'en' | 'ru' | string;
     build: string; // "2.8.0"
     network: Network;
@@ -80,6 +81,10 @@ export interface TonendpointConfig {
     battery_beta?: boolean;
     disable_battery?: boolean;
     disable_battery_send?: boolean;
+    battery_packages?: {
+        value: number;
+        image: string;
+    }[];
 
     /**
      * "secret" flag name to determine if the app is on ios review
@@ -93,6 +98,19 @@ export interface TonendpointConfig {
     '2fa_bot_url'?: string;
 
     tron_api_url?: string;
+
+    enhanced_acs_pmob?: {
+        code?: string;
+        acs_until?: number;
+    };
+
+    pro_mobile_app_appstore_link?: string;
+    pro_landing_url?: string;
+}
+
+interface CountryIP {
+    ip: string;
+    country: string;
 }
 
 const defaultTonendpoint = 'https://api.tonkeeper.com'; //  'http://localhost:1339';
@@ -116,13 +134,13 @@ export class Tonendpoint {
 
     constructor(
         {
-            lang = 'en',
-            build = '3.0.0',
-            network = Network.MAINNET,
-            platform = 'web',
+            lang,
+            build,
+            network,
+            platform,
             countryCode,
             targetEnv
-        }: Partial<BootParams> & { targetEnv: TargetEnv },
+        }: BootParams & { targetEnv: TargetEnv },
         { fetchApi = defaultFetch, basePath = defaultTonendpoint }: BootOptions
     ) {
         this.targetEnv = targetEnv;
@@ -175,6 +193,14 @@ export class Tonendpoint {
         return response.json();
     };
 
+    country = async (): Promise<CountryIP> => {
+        const response = await this.fetchApi('https://boot.tonkeeper.com/my/ip', {
+            method: 'GET'
+        });
+
+        return response.json();
+    };
+
     GET = async <Data>(
         path: string,
         rewriteParams?: Partial<BootParams>,
@@ -195,12 +221,12 @@ export class Tonendpoint {
         return result.data;
     };
 
-    getFiatMethods = (countryCode?: string | null | undefined): Promise<TonendpoinFiatMethods> => {
-        return this.GET('/fiat/methods', { countryCode });
+    getFiatMethods = (): Promise<TonendpoinFiatMethods> => {
+        return this.GET('/fiat/methods');
     };
 
-    getAppsPopular = (countryCode?: string | null | undefined): Promise<Recommendations> => {
-        return this.GET('/apps/popular', { countryCode }, { track: this.getTrack() });
+    getAppsPopular = (): Promise<Recommendations> => {
+        return this.GET('/apps/popular', {}, { track: this.getTrack() });
     };
 
     getTrack = (): DAppTrack => {
@@ -211,8 +237,12 @@ export class Tonendpoint {
                 return 'twa';
             case 'extension':
             case 'web':
-            default:
+            case 'tablet':
+            case 'mobile':
+            case 'swap_widget_web':
                 return 'extension';
+            default:
+                assertUnreachable(this.targetEnv);
         }
     };
 }

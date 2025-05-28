@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-    ConnectItemReply,
     ConnectRequest,
-    DAppManifest
+    DAppManifest,
+    TonConnectEventPayload
 } from '@tonkeeper/core/dist/entries/tonConnect';
-import { getManifest } from '@tonkeeper/core/dist/service/tonConnect/connectService';
+import {
+    getDeviceInfo,
+    getManifest,
+    getBrowserPlatform
+} from '@tonkeeper/core/dist/service/tonConnect/connectService';
 import React, { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useAppSdk } from '../../hooks/appSdk';
@@ -22,7 +26,8 @@ import { ResultButton } from '../transfer/common';
 import { SelectDropDown, SelectDropDownHost, SelectField } from '../fields/Select';
 import { DropDownContent, DropDownItem, DropDownItemsDivider } from '../DropDown';
 import { Account } from '@tonkeeper/core/dist/entries/account';
-import { WalletId } from '@tonkeeper/core/dist/entries/wallet';
+import { isStandardTonWallet, WalletId, WalletVersion } from '@tonkeeper/core/dist/entries/wallet';
+import { TonConnectParams } from '@tonkeeper/core/dist/service/tonConnect/connectionService';
 
 const Title = styled(H2)`
     text-align: center;
@@ -78,15 +83,16 @@ const ConnectContent: FC<{
     origin?: string;
     params: ConnectRequest;
     manifest: DAppManifest;
+    appName: string;
     handleClose: (
         result: {
-            replyItems: ConnectItemReply[];
+            replyItems: TonConnectEventPayload;
             manifest: DAppManifest;
             account: Account;
             walletId: WalletId;
         } | null
     ) => void;
-}> = ({ params, manifest, origin, handleClose }) => {
+}> = ({ params, manifest, origin, handleClose, appName }) => {
     const activeAccount = useActiveAccount();
     const [selectedAccountAndWallet, setSelectedAccountAndWallet] = useState<{
         account: Account;
@@ -116,13 +122,33 @@ const ConnectContent: FC<{
                 request: params,
                 manifest,
                 webViewUrl: origin,
+                appName,
                 ...selectedAccountAndWallet
             });
+
+            const wallet = selectedAccountAndWallet.account.getTonWallet(
+                selectedAccountAndWallet.walletId
+            );
+
+            const maxMessages =
+                wallet && isStandardTonWallet(wallet) && wallet.version === WalletVersion.V5R1
+                    ? 255
+                    : 4;
+
+            selectedAccountAndWallet.walletId;
             setDone(true);
             setTimeout(
                 () =>
                     handleClose({
-                        replyItems,
+                        replyItems: {
+                            items: replyItems,
+                            device: getDeviceInfo(
+                                getBrowserPlatform(),
+                                sdk.version,
+                                maxMessages,
+                                appName
+                            )
+                        },
                         manifest,
                         ...selectedAccountAndWallet
                     }),
@@ -295,26 +321,27 @@ const useManifest = (params: ConnectRequest | null) => {
 
 export const TonConnectNotification: FC<{
     origin?: string;
-    params: ConnectRequest | null;
+    params: Pick<TonConnectParams, 'request' | 'appName'> | null;
     handleClose: (
         result: {
-            replyItems: ConnectItemReply[];
+            replyItems: TonConnectEventPayload;
             manifest: DAppManifest;
             account: Account;
             walletId: WalletId;
         } | null
     ) => void;
 }> = ({ params, origin, handleClose }) => {
-    const { data: manifest } = useManifest(params);
+    const { data: manifest } = useManifest(params?.request ?? null);
 
     const Content = useCallback(() => {
         if (!params || !manifest) return undefined;
         return (
             <ConnectContent
                 origin={origin}
-                params={params}
+                params={params.request}
                 manifest={manifest}
                 handleClose={handleClose}
+                appName={params.appName}
             />
         );
     }, [origin, params, manifest, handleClose]);

@@ -21,10 +21,11 @@ import { AssetAmount } from '@tonkeeper/core/dist/entries/crypto/asset/asset-amo
 import { useToast } from '../../../hooks/useNotification';
 import { TonRecipientInput } from '../../fields/TonRecipientInput';
 import { TonRecipient } from '@tonkeeper/core/dist/entries/send';
+import { useInputFocusScroll } from '../../../hooks/keyboard/useInputFocusScroll';
 
 const NotificationStyled = styled(Notification)`
     ${p =>
-        p.theme.displayType === 'full-width' &&
+        p.theme.proDisplayType === 'desktop' &&
         css`
             max-width: 400px;
         `}
@@ -44,6 +45,7 @@ export const BatteryRechargeNotification: FC<{
             isOpen={isOpen}
             handleClose={onClose}
             title={t('battery_recharge_by_crypto_title')}
+            mobileFullScreen
         >
             {() =>
                 !!preselectedAsset && (
@@ -96,7 +98,7 @@ const BatteryRechargeNotificationContent: FC<{
         setAsset(preselectedAsset);
     }, [preselectedAsset]);
 
-    const [selectedPackType, setSelectedPackType] = useState<string | undefined>();
+    const [selectedPackId, setSelectedPackId] = useState<string | undefined>();
     const methods = useBatteryAvailableRechargeMethods();
     const packs = useBatteryPacksReservedApplied();
     const [selectedCustomAmount, setSelectedCustomAmount] = useState<{
@@ -148,11 +150,11 @@ const BatteryRechargeNotificationContent: FC<{
             }
         }
 
-        if (!selectedPackType) {
+        if (!selectedPackId) {
             throw new Error('No pack type selected');
         }
-        if (selectedPackType !== 'custom') {
-            const packPrice = packs?.find(p => p.type === selectedPackType)?.price;
+        if (selectedPackId !== 'custom') {
+            const packPrice = packs?.find(p => p.id === selectedPackId)?.price;
 
             if (!unitToTokenRate || !packPrice) {
                 throw new Error('Invalid packs data');
@@ -177,11 +179,14 @@ const BatteryRechargeNotificationContent: FC<{
         }
     };
 
+    const contentRef = useRef<HTMLDivElement>(null);
+    useInputFocusScroll(contentRef);
+
     const isContinueDisabled =
-        !selectedPackType || (selectedPackType === 'custom' && selectedCustomAmount.error);
+        !selectedPackId || (selectedPackId === 'custom' && selectedCustomAmount.error);
 
     return (
-        <ContentWrapper>
+        <ContentWrapper ref={contentRef}>
             {asGift && (
                 <TonRecipientInputStyled
                     ref={giftInputRef}
@@ -196,12 +201,12 @@ const BatteryRechargeNotificationContent: FC<{
             />
             <BatteryPacksSelect
                 asset={asset}
-                selectedPackType={selectedPackType}
-                onPackTypeChange={setSelectedPackType}
+                selectedPackId={selectedPackId}
+                onPackIdChange={setSelectedPackId}
             />
             <BatteryCustomAmountInputStyled
                 asset={asset}
-                hidden={selectedPackType !== 'custom'}
+                hidden={selectedPackId !== 'custom'}
                 onChange={setSelectedCustomAmount}
             />
             <ButtonResponsiveSizeStyled

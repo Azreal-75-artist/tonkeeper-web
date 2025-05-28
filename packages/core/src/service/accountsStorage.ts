@@ -158,6 +158,8 @@ export class AccountsStorage {
         if (activeAccountId !== null && ids.includes(activeAccountId)) {
             await this.setActiveAccountId(newState[0]?.id || null);
         }
+
+        return newState;
     };
 
     removeAccountFromState = async (id: AccountId) => {
@@ -173,6 +175,16 @@ export class AccountsStorage {
         const existingAccounts = await this.getAccounts();
         const existingAccount = existingAccounts.find(a => a.id === accountId);
         const name = existingAccount?.name || 'Account ' + (existingAccounts.length + 1);
+        const emoji = existingAccount?.emoji || getFallbackAccountEmoji(accountId);
+        return { name, emoji };
+    }
+
+    async getNewMultisigAccountNameAndEmoji(accountId: AccountId) {
+        const existingAccounts = await this.getAccounts();
+        const existingAccount = existingAccounts.find(a => a.id === accountId);
+        const name =
+            existingAccount?.name ||
+            'Multisig ' + (existingAccounts.filter(a => a.type === 'ton-multisig').length + 1);
         const emoji = existingAccount?.emoji || getFallbackAccountEmoji(accountId);
         return { name, emoji };
     }
@@ -204,12 +216,11 @@ export class AccountsStorage {
                 if ((account.auth as unknown as { encryptedMnemonic: string }).encryptedMnemonic) {
                     const auth: AuthPassword = {
                         kind: account.auth.kind,
-                        encryptedSecret: (
-                            account.auth as unknown as { encryptedMnemonic: string }
-                        ).encryptedMnemonic
+                        encryptedSecret: (account.auth as unknown as { encryptedMnemonic: string })
+                            .encryptedMnemonic
                     };
                     (account.auth as unknown as AuthPassword) = auth;
-                    
+
                     needUpdate = true;
                 }
             }

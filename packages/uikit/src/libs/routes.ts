@@ -42,9 +42,13 @@ export enum SettingsRoute {
     nft = '/nft',
     security = '/security',
     subscriptions = '/subscriptions',
-    country = '/country',
     pro = '/pro',
     twoFa = '/two-fa'
+}
+
+export enum DevSettingsRoute {
+    index = '/',
+    logs = '/logs'
 }
 
 export enum WalletSettingsRoute {
@@ -58,6 +62,7 @@ export enum WalletSettingsRoute {
     connectedApps = '/connected-apps',
     derivations = '/derivations',
     battery = '/battery',
+    chains = '/chains',
     twoFa = '/two-fa',
     notification = '/notification'
 }

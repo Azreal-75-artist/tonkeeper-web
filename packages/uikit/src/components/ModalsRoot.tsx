@@ -10,6 +10,10 @@ import { MultisigOrderNotificationControlled } from './modals/MultisigOrderNotif
 import { DeleteAccountNotificationControlled } from './modals/DeleteAccountNotificationControlled';
 import { ManageFolderNotificationControlled } from './modals/ManageFolderNotificationControlled';
 import { ConfirmTwoFANotificationControlled } from './modals/ConfirmTwoFANotificationControlled';
+import { BuyNotificationControlled } from './modals/BuyNotificationControlled';
+import { PromptMobileProPinNotificationControlled } from './modals/PromptMobileProPin';
+import { CheckDesktopPasswordControlled } from './modals/PromptDesktopPassword';
+import { TonTransactionNotificationControlled } from './modals/TonTransactionNotificationControlled';
 
 export const ModalsRoot = () => {
     return (
@@ -26,6 +30,10 @@ export const ModalsRoot = () => {
             <DeleteAccountNotificationControlled />
             <ManageFolderNotificationControlled />
             <ConfirmTwoFANotificationControlled />
+            <BuyNotificationControlled />
+            <PromptMobileProPinNotificationControlled />
+            <CheckDesktopPasswordControlled />
+            <TonTransactionNotificationControlled />
         </>
     );
 };

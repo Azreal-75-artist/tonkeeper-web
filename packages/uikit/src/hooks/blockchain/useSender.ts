@@ -27,6 +27,7 @@ import {
 import { getTronSigner, useGetAccountSigner } from '../../state/mnemonic';
 import { useCallback, useMemo } from 'react';
 import {
+    jettonToTonAsset,
     TonAsset,
     tonAssetAddressToString
 } from '@tonkeeper/core/dist/entries/crypto/asset/ton-asset';
@@ -39,14 +40,18 @@ import { TON_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
 import { getMultisigSignerInfo } from '../../state/multisig';
 import { GaslessConfig, Multisig } from '@tonkeeper/core/dist/tonApiV2';
 import { estimationSigner } from '@tonkeeper/core/dist/service/ton-blockchain/utils';
-import { isStandardTonWallet, WalletVersion } from '@tonkeeper/core/dist/entries/wallet';
+import {
+    isStandardTonWallet,
+    TonWalletStandard,
+    WalletVersion
+} from '@tonkeeper/core/dist/entries/wallet';
 import { useGaslessConfig } from '../../state/gasless';
 import { TonConnectTransactionPayload } from '@tonkeeper/core/dist/entries/tonConnect';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TonConnectTransactionService } from '@tonkeeper/core/dist/service/ton-blockchain/ton-connect-transaction.service';
 import { useAssets } from '../../state/home';
 import { JettonEncoder } from '@tonkeeper/core/dist/service/ton-blockchain/encoder/jetton-encoder';
-import { toNano } from '@ton/core';
+import { Address, toNano } from '@ton/core';
 import {
     useTwoFAWalletConfigMayBeOfMultisigHost,
     useTwoFAApi,
@@ -58,10 +63,11 @@ import { useConfirmTwoFANotification } from '../../components/modals/ConfirmTwoF
 import { useTronApi } from '../../state/tron/tron';
 import { TronSender } from '@tonkeeper/core/dist/service/tron-blockchain/tron-sender';
 import { useAppSdk } from '../appSdk';
-import { useCheckTouchId } from '../../state/password';
 import { BLOCKCHAIN_NAME } from '@tonkeeper/core/dist/entries/crypto';
 import { TronAsset } from '@tonkeeper/core/dist/entries/crypto/asset/tron-asset';
 import { QueryKey } from '../../libs/queryKey';
+import { useJettonList } from '../../state/jetton';
+import { seeIfValidTonAddress } from '@tonkeeper/core/dist/utils/common';
 
 export type SenderChoice =
     | { type: 'multisig'; ttlSeconds: number }
@@ -194,6 +200,8 @@ export const useTonConnectAvailableSendersChoices = (payload: TonConnectTransact
     const batteryEnableConfig = useBatteryEnabledConfig();
     const { data: twoFaConfig } = useTwoFAWalletConfig();
     const batteryUnitTonRate = useBatteryUnitTonRate();
+    const gaslessConfig = useGaslessConfig();
+    const { data: jettons } = useJettonList();
 
     return useQuery<SenderChoiceUserAvailable[]>(
         [
@@ -204,7 +212,10 @@ export const useTonConnectAvailableSendersChoices = (payload: TonConnectTransact
             batteryEnableConfig.disableOperations,
             batteryConfig,
             twoFaConfig?.status,
-            batteryUnitTonRate
+            batteryUnitTonRate,
+            gaslessConfig.relayAddress,
+            gaslessConfig.gasJettons,
+            jettons
         ],
         async () => {
             if (account.type === 'ledger' || twoFaConfig?.status === 'active') {
@@ -217,10 +228,24 @@ export const useTonConnectAvailableSendersChoices = (payload: TonConnectTransact
                 account.activeTonWallet
             );
 
+            let externalSenderEstimationError = false;
+            try {
+                const externalSender = new WalletMessageSender(
+                    api,
+                    account.activeTonWallet as TonWalletStandard,
+                    estimationSigner
+                );
+
+                await tonConnectService.estimate(externalSender, payload);
+            } catch (e) {
+                externalSenderEstimationError = true;
+            }
+
             if (
                 !batteryEnableConfig.disableOperations &&
                 batteryAuthToken &&
-                isStandardTonWallet(account.activeTonWallet)
+                isStandardTonWallet(account.activeTonWallet) &&
+                payload.messagesVariants?.battery
             ) {
                 const batterySender = new BatteryMessageSender(
                     {
@@ -243,10 +268,50 @@ export const useTonConnectAvailableSendersChoices = (payload: TonConnectTransact
                 }
             }
 
+            if (
+                payload.messagesVariants?.gasless &&
+                isStandardTonWallet(account.activeTonWallet) &&
+                payload.messagesVariants.gasless.options?.asset &&
+                seeIfValidTonAddress(payload.messagesVariants.gasless.options?.asset)
+            ) {
+                const assetAddress = Address.parse(
+                    payload.messagesVariants.gasless.options?.asset
+                ).toRawString();
+                if (
+                    assetAddress &&
+                    gaslessConfig.gasJettons.some(j => j.masterId === assetAddress) &&
+                    jettons?.balances.some(j => j.jetton.address === assetAddress)
+                ) {
+                    const asset = jettonToTonAsset(assetAddress, jettons);
+                    const gaslessSender = new GaslessMessageSender(
+                        {
+                            relayerAddress: gaslessConfig.relayAddress,
+                            payWithAsset: asset
+                        },
+                        api,
+                        account.activeTonWallet,
+                        estimationSigner
+                    );
+
+                    try {
+                        await tonConnectService.estimate(gaslessSender, payload);
+
+                        if (externalSenderEstimationError) {
+                            choices.unshift({ type: 'gasless', asset });
+                        } else {
+                            choices.push({ type: 'gasless', asset });
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+            }
+
             return choices;
         },
         {
-            enabled: batteryAuthToken !== undefined
+            enabled: batteryAuthToken !== undefined && jettons !== undefined,
+            keepPreviousData: true
         }
     );
 };
@@ -431,8 +496,11 @@ export const useGetSender = () => {
     const twoFaApi = useTwoFAApi();
 
     const { data: twoFAConfig } = useTwoFAWalletConfigMayBeOfMultisigHost();
-    const { onOpen: openTwoFaConfirmTelegram, onClose: closeTwoFaConfirmTelegram } =
-        useConfirmTwoFANotification();
+    const {
+        controller: controllerTwoFa,
+        onOpen: openTwoFaConfirmTelegram,
+        onClose: closeTwoFaConfirmTelegram
+    } = useConfirmTwoFANotification();
     const twoFAServiceConfig = useTwoFAServiceConfig();
     const batteryUnitTonRate = useBatteryUnitTonRate();
 
@@ -480,6 +548,7 @@ export const useGetSender = () => {
                         signer,
                         twoFAConfig.pluginAddress,
                         {
+                            controllerTwoFa,
                             openConfirmModal: () => {
                                 openTwoFaConfirmTelegram();
                                 return closeTwoFaConfirmTelegram;
@@ -524,6 +593,7 @@ export const useGetSender = () => {
                         signer,
                         twoFAConfig.pluginAddress,
                         {
+                            controllerTwoFa,
                             openConfirmModal: () => {
                                 openTwoFaConfirmTelegram();
                                 return closeTwoFaConfirmTelegram;
@@ -561,6 +631,7 @@ export const useGetSender = () => {
                     signer,
                     twoFAConfig.pluginAddress,
                     {
+                        controllerTwoFa,
                         openConfirmModal: () => {
                             openTwoFaConfirmTelegram();
                             return closeTwoFaConfirmTelegram;
@@ -666,12 +737,11 @@ export const useGetTronSender = () => {
     const sdk = useAppSdk();
     const tronApi = useTronApi();
     const activeAccount = useActiveAccount();
-    const { mutateAsync: checkTouchId } = useCheckTouchId();
     const { mutateAsync: requestToken } = useRequestBatteryAuthToken();
     const { data: authToken } = useBatteryAuthToken();
 
     return useCallback(async () => {
-        const signer = getTronSigner(sdk, tronApi, activeAccount, checkTouchId);
+        const signer = getTronSigner(sdk, tronApi, activeAccount);
 
         if (!isAccountTronCompatible(activeAccount) || !activeAccount.activeTronWallet) {
             throw new Error('Tron is not enabled for the active wallet');
@@ -680,7 +750,7 @@ export const useGetTronSender = () => {
         const token = authToken ?? (await requestToken());
 
         return new TronSender(tronApi, activeAccount.activeTronWallet, signer, token);
-    }, [tronApi, activeAccount, checkTouchId]);
+    }, [tronApi, activeAccount]);
 };
 
 export const useGetTronEstimationSender = () => {

@@ -15,7 +15,6 @@ import { useAppContext } from '../../hooks/appContext';
 import { useAppSdk } from '../../hooks/appSdk';
 import { openIosKeyboard } from '../../hooks/ios';
 import { useTranslation } from '../../hooks/translation';
-import { useIsFullWidthMode } from '../../hooks/useIsFullWidthMode';
 import { useJettonList } from '../../state/jetton';
 import { useActiveTronWallet } from '../../state/tron/tron';
 import {
@@ -44,10 +43,11 @@ import {
     InitTransferData,
     MainButton,
     makeTransferInitAmountState,
-    makeTransferInitData,
+    makeTonTransferInitData,
     RecipientHeaderBlock,
-    TransferViewHeaderBlock,
-    Wrapper
+    Wrapper,
+    makeTronTransferInitData,
+    TransferViewHeaderBlock
 } from './common';
 import { MultisigOrderFormView } from './MultisigOrderFormView';
 import { MultisigOrderLifetimeMinutes } from '../../libs/multisig';
@@ -57,6 +57,7 @@ import { useAnalyticsTrack } from '../../hooks/amplitude';
 import { TRON_USDT_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
 import { seeIfValidTonAddress, seeIfValidTronAddress } from '@tonkeeper/core/dist/utils/common';
 import { useActiveWallet } from '../../state/wallet';
+import styled, { css } from 'styled-components';
 
 const SendContent: FC<{
     onClose: () => void;
@@ -68,7 +69,6 @@ const SendContent: FC<{
     const { standalone, ios, extension } = useAppContext();
     const { t } = useTranslation();
     const { data: filter } = useJettonList();
-    const isFullWidth = useIsFullWidthMode();
     const isActiveAccountMultisig = useIsActiveAccountMultisig();
     const track = useAnalyticsTrack();
 
@@ -179,9 +179,6 @@ const SendContent: FC<{
             comment: text ?? '',
             done
         });
-        if (done) {
-            setView('amount');
-        }
     };
 
     const processJetton = useCallback(
@@ -301,12 +298,12 @@ const SendContent: FC<{
                                         setView('recipient');
                                     }}
                                     isAnimationProcess={status === 'exiting'}
-                                    Header={() => (
+                                    header={
                                         <TransferViewHeaderBlock
                                             title={t('multisig_create_order_title')}
                                             onClose={onClose}
                                         />
-                                    )}
+                                    }
                                     MainButton={MainButton}
                                 />
                             )}
@@ -363,17 +360,17 @@ const SendContent: FC<{
                                         isMax={amountViewState!.isMax!}
                                         ttl={multisigTimeout!}
                                     >
-                                        {status !== 'exiting' && isFullWidth && (
-                                            <ConfirmViewTitleSlot>
+                                        <ConfirmViewTitleSlot>
+                                            {status !== 'exiting' && (
                                                 <NotificationHeaderPortal>
                                                     <NotificationHeader>
                                                         <ConfirmViewTitle />
                                                     </NotificationHeader>
                                                 </NotificationHeaderPortal>
-                                            </ConfirmViewTitleSlot>
-                                        )}
-                                        {status !== 'exiting' && isFullWidth && (
-                                            <ConfirmViewButtonsSlot>
+                                            )}
+                                        </ConfirmViewTitleSlot>
+                                        <ConfirmViewButtonsSlot>
+                                            {status !== 'exiting' && (
                                                 <NotificationFooterPortal>
                                                     <NotificationFooter>
                                                         <ConfirmViewButtons
@@ -381,8 +378,8 @@ const SendContent: FC<{
                                                         />
                                                     </NotificationFooter>
                                                 </NotificationFooterPortal>
-                                            </ConfirmViewButtonsSlot>
-                                        )}
+                                            )}
+                                        </ConfirmViewButtonsSlot>
                                     </ConfirmMultisigNewTransferView>
                                 ) : (
                                     <ConfirmTransferView
@@ -392,17 +389,17 @@ const SendContent: FC<{
                                         assetAmount={assetAmount!}
                                         isMax={amountViewState!.isMax!}
                                     >
-                                        {status !== 'exiting' && isFullWidth && (
-                                            <ConfirmViewTitleSlot>
+                                        <ConfirmViewTitleSlot>
+                                            {status !== 'exiting' && (
                                                 <NotificationHeaderPortal>
                                                     <NotificationHeader>
                                                         <ConfirmViewTitle />
                                                     </NotificationHeader>
                                                 </NotificationHeaderPortal>
-                                            </ConfirmViewTitleSlot>
-                                        )}
-                                        {status !== 'exiting' && isFullWidth && (
-                                            <ConfirmViewButtonsSlot>
+                                            )}
+                                        </ConfirmViewTitleSlot>
+                                        <ConfirmViewButtonsSlot>
+                                            {status !== 'exiting' && (
                                                 <NotificationFooterPortal>
                                                     <NotificationFooter>
                                                         <ConfirmViewButtons
@@ -410,8 +407,8 @@ const SendContent: FC<{
                                                         />
                                                     </NotificationFooter>
                                                 </NotificationFooterPortal>
-                                            </ConfirmViewButtonsSlot>
-                                        )}
+                                            )}
+                                        </ConfirmViewButtonsSlot>
                                     </ConfirmTransferView>
                                 ))}
                         </div>
@@ -422,10 +419,18 @@ const SendContent: FC<{
     );
 };
 
+const NotificationStyled = styled(Notification)`
+    ${p =>
+        p.theme.proDisplayType === 'mobile' &&
+        css`
+            --height: calc(100% - (env(safe-area-inset-top) + 10px));
+        `}
+`;
+
 const SendActionNotification = () => {
     const [open, setOpen] = useState(false);
     const [chain, setChain] = useState<BLOCKCHAIN_NAME | undefined>(undefined);
-    const [tonTransfer, setTonTransfer] = useState<InitTransferData | undefined>(undefined);
+    const [transferParams, setTransferParams] = useState<InitTransferData | undefined>(undefined);
     const { data: jettons } = useJettonList();
     const wallet = useActiveWallet();
 
@@ -445,6 +450,7 @@ const SendActionNotification = () => {
             setChain(options.params.chain);
 
             if (transfer.chain === BLOCKCHAIN_NAME.TRON) {
+                setTransferParams(makeTronTransferInitData(transfer));
                 setOpen(true);
                 track('send_open', { from: transfer.from });
                 return;
@@ -453,13 +459,13 @@ const SendActionNotification = () => {
             getAccountAsync({ address: wallet.rawAddress }).then(fromAccount => {
                 if (transfer.address && seeIfValidTonAddress(transfer.address)) {
                     getAccountAsync({ address: transfer.address }).then(toAccount => {
-                        setTonTransfer(
-                            makeTransferInitData(transfer, fromAccount, toAccount, jettons)
+                        setTransferParams(
+                            makeTonTransferInitData(transfer, fromAccount, toAccount, jettons)
                         );
                         setOpen(true);
                     });
                 } else {
-                    setTonTransfer({
+                    setTransferParams({
                         initAmountState: makeTransferInitAmountState(transfer, fromAccount, jettons)
                     });
                     setOpen(true);
@@ -476,26 +482,32 @@ const SendActionNotification = () => {
     }, [jettons, track]);
 
     const onClose = useCallback(() => {
-        setTonTransfer(undefined);
+        setTransferParams(undefined);
         setOpen(false);
     }, []);
 
     const Content = useCallback(() => {
-        if (!open) return undefined;
         return (
             <SendContent
                 onClose={onClose}
                 chain={chain}
-                initAmountState={tonTransfer?.initAmountState}
-                initRecipient={tonTransfer?.initRecipient}
+                initAmountState={transferParams?.initAmountState}
+                initRecipient={transferParams?.initRecipient}
             />
         );
-    }, [open, tonTransfer, chain]);
+    }, [open, transferParams, chain]);
 
     return (
-        <Notification isOpen={open} handleClose={onClose} hideButton backShadow footer={<></>}>
+        <NotificationStyled
+            isOpen={open}
+            handleClose={onClose}
+            hideButton
+            backShadow
+            footer={<></>}
+            mobileFullScreen
+        >
             {Content}
-        </Notification>
+        </NotificationStyled>
     );
 };
 

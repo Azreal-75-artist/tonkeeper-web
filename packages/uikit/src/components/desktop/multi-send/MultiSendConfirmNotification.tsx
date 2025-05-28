@@ -22,7 +22,6 @@ import {
     MultiSendFormTokenized,
     useSendMultiTransfer
 } from '../../../hooks/blockchain/useSendMultiTransfer';
-import { useNavigate } from 'react-router-dom';
 import { AppRoute } from '../../../libs/routes';
 import { useDisclosure } from '../../../hooks/useDisclosure';
 import { MultiSendReceiversNotification } from './MultiSendReceiversNotification';
@@ -34,6 +33,7 @@ import {
     SenderTypeUserAvailable,
     useAvailableSendersChoices
 } from '../../../hooks/blockchain/useSender';
+import { useNavigate } from '../../../hooks/router/useNavigate';
 import { TonEstimation } from '@tonkeeper/core/dist/entries/send';
 
 const ConfirmWrapper = styled.div`
@@ -173,11 +173,6 @@ const MultiSendConfirmContent: FC<{
         } as const;
     }, [asset]);
     const { data: availableSendersChoices } = useAvailableSendersChoices(operationType);
-    useEffect(() => {
-        if (availableSendersChoices) {
-            onSenderTypeChange(availableSendersChoices[0].type);
-        }
-    }, [availableSendersChoices]);
 
     const [selectedSenderType, onSenderTypeChange] = useState<SenderTypeUserAvailable>();
 
@@ -196,6 +191,18 @@ const MultiSendConfirmContent: FC<{
     } = useEstimateMultiTransfer(formTokenized, asset);
 
     const navigate = useNavigate();
+
+    const mutation = useSendMultiTransfer();
+
+    useEffect(() => {
+        if (!mutation.isIdle) {
+            return;
+        }
+
+        if (availableSendersChoices) {
+            onSenderTypeChange(availableSendersChoices[0].type);
+        }
+    }, [JSON.stringify(availableSendersChoices), mutation.isIdle]);
 
     return (
         <>
@@ -244,6 +251,7 @@ const MultiSendConfirmContent: FC<{
                     isLoading={estimateLoading || !isRateFetched}
                     estimationError={estimateError}
                     selectedSenderChoice={selectedSenderChoice!}
+                    mutation={mutation}
                 />
             </ConfirmWrapper>
             <MultiSendReceiversNotification
@@ -276,14 +284,19 @@ const ButtonBlock: FC<{
     estimation: TonEstimation | undefined;
     estimationError: Error | null;
     selectedSenderChoice: SenderChoiceUserAvailable | undefined;
-}> = ({ onSuccess, form, asset, estimation, isLoading, estimationError, selectedSenderChoice }) => {
+    mutation: ReturnType<typeof useSendMultiTransfer>;
+}> = ({
+    onSuccess,
+    form,
+    asset,
+    estimation,
+    isLoading,
+    estimationError,
+    selectedSenderChoice,
+    mutation
+}) => {
     const { t } = useTranslation();
-    const {
-        mutateAsync: send,
-        error,
-        isLoading: isSending,
-        data: doneSend
-    } = useSendMultiTransfer();
+    const { mutateAsync: send, error, isLoading: isSending, data: doneSend } = mutation;
 
     const onClick = async () => {
         const confirmed = await send({

@@ -22,8 +22,10 @@ import { mnemonicToKeypair } from '@tonkeeper/core/dist/service/mnemonicService'
 import { MnemonicType } from '@tonkeeper/core/dist/entries/password';
 import { Network } from '@tonkeeper/core/dist/entries/network';
 import { mayBeCreateAccountId } from '@tonkeeper/core/dist/service/walletService';
+import { handleSubmit } from '../../libs/form';
+import { NotificationFooter, NotificationFooterPortal } from '../Notification';
 
-const Wrapper = styled.div`
+const Wrapper = styled.form`
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -141,7 +143,7 @@ export const ChoseWalletVersions: FC<{
     };
 
     return (
-        <Wrapper>
+        <Wrapper onSubmit={handleSubmit(onSelect)}>
             <H2Label2Responsive>{t('choose_wallets_title')}</H2Label2Responsive>
             <Body>{t('choose_wallets_subtitle')}</Body>
             {!wallets ? (
@@ -171,17 +173,21 @@ export const ChoseWalletVersions: FC<{
                             </ListItem>
                         ))}
                     </ListBlockStyled>
-                    <SubmitBlock>
-                        <ButtonResponsiveSize
-                            fullWidth
-                            primary
-                            disabled={!checkedVersions.length}
-                            onClick={onSelect}
-                            loading={isLoading}
-                        >
-                            {t('continue')}
-                        </ButtonResponsiveSize>
-                    </SubmitBlock>
+                    <NotificationFooterPortal>
+                        <NotificationFooter>
+                            <ButtonResponsiveSize
+                                fullWidth
+                                primary
+                                disabled={!checkedVersions.length}
+                                onClick={onSelect}
+                                loading={isLoading}
+                                type="submit"
+                                autoFocus
+                            >
+                                {t('continue')}
+                            </ButtonResponsiveSize>
+                        </NotificationFooter>
+                    </NotificationFooterPortal>
                 </>
             )}
         </Wrapper>

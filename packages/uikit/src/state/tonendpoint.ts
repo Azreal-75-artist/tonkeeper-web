@@ -12,28 +12,33 @@ import {
 import { useMemo } from 'react';
 import { useAppContext } from '../hooks/appContext';
 import { QueryKey, TonkeeperApiKey } from '../libs/queryKey';
-import { useUserCountry } from './country';
 import { TargetEnv } from '@tonkeeper/core/dist/AppSdk';
 
-export const useTonendpoint = (options: {
+export const useTonendpoint = ({
+    targetEnv,
+    build,
+    network = Network.MAINNET,
+    lang = Language.EN,
+    platform
+}: {
     targetEnv: TargetEnv;
     build: string;
     network?: Network;
     lang?: Language;
-    platform?: BootParams['platform'];
+    platform: BootParams['platform'];
 }) => {
     return useMemo(() => {
         return new Tonendpoint(
             {
-                build: options.build,
-                network: options.network,
-                lang: localizationText(options.lang),
-                targetEnv: options.targetEnv,
-                platform: options.platform
+                build,
+                network,
+                lang: localizationText(lang),
+                targetEnv,
+                platform
             },
             {}
         );
-    }, [options.targetEnv, options.build, options.network, options.lang, options.platform]);
+    }, [targetEnv, build, network, lang, platform]);
 };
 
 export interface ServerConfig {
@@ -45,6 +50,8 @@ export const useTonenpointConfig = (tonendpoint: Tonendpoint) => {
     return useQuery<ServerConfig, Error>(
         [QueryKey.tonkeeperApi, TonkeeperApiKey.config, tonendpoint],
         async () => {
+            const country = await tonendpoint.country();
+            tonendpoint.setCountryCode(country.country);
             return {
                 mainnetConfig: await getServerConfig(tonendpoint, Network.MAINNET),
                 testnetConfig: await getServerConfig(tonendpoint, Network.TESTNET)
@@ -57,14 +64,15 @@ export const DefaultRefetchInterval = 60000; // 60 sec
 
 export const useTonendpointBuyMethods = () => {
     const { tonendpoint } = useAppContext();
-    const { data: countryCode } = useUserCountry();
     return useQuery<TonendpoinFiatCategory, Error>(
-        [QueryKey.tonkeeperApi, TonkeeperApiKey.fiat, tonendpoint.params.lang, countryCode],
+        [QueryKey.tonkeeperApi, TonkeeperApiKey.fiat, tonendpoint.params.lang],
         async () => {
-            const methods = await tonendpoint.getFiatMethods(countryCode);
+            const methods = await tonendpoint.getFiatMethods();
             const buy = methods.categories[0];
 
-            const layout = methods.layoutByCountry.find(item => item.countryCode === countryCode);
+            const layout = methods.layoutByCountry.find(
+                item => item.countryCode === tonendpoint.params.countryCode
+            );
 
             const buildMethods = (acc: TonendpoinFiatItem[], id: string) => {
                 const method = buy.items.find(item => item.id === id);

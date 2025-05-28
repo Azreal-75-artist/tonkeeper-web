@@ -158,7 +158,7 @@ const useProcessMnemonic = () => {
             }
         }
 
-        const isValidBip39 = validateBip39Mnemonic(mnemonic);
+        const isValidBip39 = await validateBip39Mnemonic(mnemonic);
         if (isValidBip39) {
             const possibleStadnardAccount = await createStandardTonAccountByMnemonic(
                 context,
@@ -213,7 +213,7 @@ const getMnemonicTypeFallback = async (mnemonic: string[]) => {
     }
 
     if (mnemonic.length === 12) {
-        if (validateBip39Mnemonic(mnemonic)) {
+        if (await validateBip39Mnemonic(mnemonic)) {
             return 'bip39';
         }
 
@@ -224,7 +224,7 @@ const getMnemonicTypeFallback = async (mnemonic: string[]) => {
         return 'tonKeychain';
     }
 
-    if (validateBip39Mnemonic(mnemonic)) {
+    if (await validateBip39Mnemonic(mnemonic)) {
         return 'bip39';
     }
 
@@ -282,7 +282,7 @@ export const ImportExistingWallet: FC<{ afterCompleted: () => void }> = ({ after
                     mnemonic: m,
                     selectAccount: true
                 });
-                setCreatedAccount(newAccountMam);
+                setCreatedAccount(newAccountMam.account);
             }
             setSelectedMnemonicType(typeToSet);
         } else if (availableOptions.length === 1) {
@@ -308,7 +308,7 @@ export const ImportExistingWallet: FC<{ afterCompleted: () => void }> = ({ after
                 mnemonic: m,
                 selectAccount: true
             });
-            setCreatedAccount(newAccountMam);
+            setCreatedAccount(newAccountMam.account);
         }
 
         setSelectedMnemonicType(mnemonicType);
@@ -400,11 +400,13 @@ export const ImportExistingWallet: FC<{ afterCompleted: () => void }> = ({ after
             return undefined;
         }
 
-        return closeModal => {
+        return (closeModal, cancelClose) => {
             openConfirmDiscard({
                 onClose: discard => {
                     if (discard) {
                         closeModal();
+                    } else {
+                        cancelClose();
                     }
                 }
             });

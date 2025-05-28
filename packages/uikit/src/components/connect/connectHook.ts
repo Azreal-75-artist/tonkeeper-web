@@ -1,21 +1,24 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-    ConnectItemReply,
     DAppManifest,
-    SendTransactionAppRequest
+    RpcMethod,
+    TonConnectEventPayload,
+    WalletResponse
 } from '@tonkeeper/core/dist/entries/tonConnect';
 import {
-    parseTonTransferWithAddress,
+    parseTonTransaction,
+    parseTronTransferWithAddress,
     seeIfBringToFrontLink
 } from '@tonkeeper/core/dist/service/deeplinkingService';
 import {
     connectRejectResponse,
     parseTonConnect,
-    saveWalletTonConnect,
-    sendTransactionErrorResponse,
-    sendTransactionSuccessResponse
+    saveWalletTonConnect
 } from '@tonkeeper/core/dist/service/tonConnect/connectService';
-import { TonConnectParams } from '@tonkeeper/core/dist/service/tonConnect/connectionService';
+import {
+    AccountConnection,
+    TonConnectParams
+} from '@tonkeeper/core/dist/service/tonConnect/connectionService';
 import { sendEventToBridge } from '@tonkeeper/core/dist/service/tonConnect/httpBridge';
 import { useAppSdk } from '../../hooks/appSdk';
 import { useTranslation } from '../../hooks/translation';
@@ -24,11 +27,23 @@ import { BLOCKCHAIN_NAME } from '@tonkeeper/core/dist/entries/crypto';
 import { useToast } from '../../hooks/useNotification';
 import { Account } from '@tonkeeper/core/dist/entries/account';
 import { WalletId } from '@tonkeeper/core/dist/entries/wallet';
+import { useTonTransactionNotification } from '../modals/TonTransactionNotificationControlled';
+import { useActiveApi, useActiveWallet } from '../../state/wallet';
+import { useBatteryServiceConfig } from '../../state/battery';
+import { useGaslessConfig } from '../../state/gasless';
 
-export const useGetConnectInfo = () => {
+export const useProcessOpenedLink = (options?: {
+    hideLoadingToast?: boolean;
+    hideErrorToast?: boolean;
+}) => {
     const sdk = useAppSdk();
     const { t } = useTranslation();
     const notifyError = useToast();
+    const { onOpen: openTransactionNotification } = useTonTransactionNotification();
+    const api = useActiveApi();
+    const walletAddress = useActiveWallet().rawAddress;
+    const batteryConfig = useBatteryServiceConfig();
+    const gaslessConfig = useGaslessConfig();
 
     return useMutation<null | TonConnectParams, Error, string>(async url => {
         try {
@@ -38,19 +53,51 @@ export const useGetConnectInfo = () => {
                 return null;
             }
 
-            const transfer = parseTonTransferWithAddress({ url });
+            const showLoadingToast = () => {
+                if (!options?.hideLoadingToast) {
+                    sdk.uiEvents.emit('copy', {
+                        method: 'copy',
+                        id: Date.now(),
+                        params: t('loading')
+                    });
+                }
+            };
 
-            if (transfer) {
-                sdk.uiEvents.emit('copy', {
-                    method: 'copy',
-                    id: Date.now(),
-                    params: t('loading')
-                });
+            const transactionRequest = await parseTonTransaction(url, {
+                api,
+                walletAddress,
+                batteryResponse: batteryConfig.excessAccount,
+                gaslessResponse: gaslessConfig.relayAddress
+            });
+            if (transactionRequest) {
+                if (transactionRequest.type === 'complex') {
+                    openTransactionNotification({
+                        params: transactionRequest.params
+                    });
+                } else {
+                    showLoadingToast();
+
+                    sdk.uiEvents.emit('transfer', {
+                        method: 'transfer',
+                        id: Date.now(),
+                        params: {
+                            chain: BLOCKCHAIN_NAME.TON,
+                            ...transactionRequest.params,
+                            from: 'qr-code'
+                        }
+                    });
+                }
+                return null;
+            }
+
+            const tronTransfer = parseTronTransferWithAddress({ url });
+            if (tronTransfer) {
+                showLoadingToast();
 
                 sdk.uiEvents.emit('transfer', {
                     method: 'transfer',
                     id: Date.now(),
-                    params: { chain: BLOCKCHAIN_NAME.TON, ...transfer, from: 'qr-code' }
+                    params: { chain: BLOCKCHAIN_NAME.TRON, ...tronTransfer, from: 'qr-code' }
                 });
                 return null;
             }
@@ -64,15 +111,13 @@ export const useGetConnectInfo = () => {
 
             // TODO: handle auto connect
 
-            sdk.uiEvents.emit('copy', {
-                method: 'copy',
-                id: Date.now(),
-                params: t('loading')
-            });
+            showLoadingToast();
 
             return params;
         } catch (e) {
-            notifyError(String(e));
+            if (!options?.hideErrorToast) {
+                notifyError(String(e));
+            }
             throw e;
         }
     });
@@ -81,7 +126,7 @@ export const useGetConnectInfo = () => {
 export interface AppConnectionProps {
     params: TonConnectParams;
     result: {
-        replyItems: ConnectItemReply[];
+        replyItems: TonConnectEventPayload;
         manifest: DAppManifest;
         account: Account;
         walletId: WalletId;
@@ -100,7 +145,7 @@ export const useResponseConnectionMutation = () => {
                 walletId: result.walletId,
                 manifest: result.manifest,
                 params,
-                replyItems: result.replyItems,
+                replyItems: result.replyItems.items,
                 appVersion: sdk.version
             });
 
@@ -125,24 +170,16 @@ export const useResponseConnectionMutation = () => {
 };
 
 export interface ResponseSendProps {
-    request: SendTransactionAppRequest;
-    boc?: string;
+    connection: AccountConnection;
+    response: WalletResponse<RpcMethod>;
 }
 
-export const useResponseSendMutation = () => {
-    return useMutation<undefined, Error, ResponseSendProps>(
-        async ({ request: { connection, id }, boc }) => {
-            const response = boc
-                ? sendTransactionSuccessResponse(id, boc)
-                : sendTransactionErrorResponse(id);
-
-            await sendEventToBridge({
-                response,
-                sessionKeyPair: connection.sessionKeyPair,
-                clientSessionId: connection.clientSessionId
-            });
-
-            return undefined;
-        }
-    );
+export const useTonConnectResponseMutation = () => {
+    return useMutation<void, Error, ResponseSendProps>(async ({ connection, response }) => {
+        return sendEventToBridge({
+            response,
+            sessionKeyPair: connection.sessionKeyPair,
+            clientSessionId: connection.clientSessionId
+        });
+    });
 };

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { formatAddress, toShortValue } from '@tonkeeper/core/dist/utils/common';
-import React, { FC, useEffect, useRef, useState } from 'react';
+import React, { FC, PropsWithChildren, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { useAppContext } from '../../hooks/appContext';
 import { useAppSdk } from '../../hooks/appSdk';
@@ -22,7 +22,11 @@ import { BLOCKCHAIN_NAME } from '@tonkeeper/core/dist/entries/crypto';
 import { SelectDropDown } from '../fields/Select';
 import { TON_ASSET, TRON_TRX_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
 import { ChevronDownIcon, CopyIcon, DoneIcon } from '../Icon';
-import { useActiveTronWallet } from '../../state/tron/tron';
+import { useIsTronEnabledForActiveWallet } from '../../state/tron/tron';
+import { BatteryBalanceIcon } from '../settings/battery/BatteryInfoHeading';
+import { useBatteryBalance } from '../../state/battery';
+import { AppRoute, WalletSettingsRoute } from '../../libs/routes';
+import { useNavigate } from '../../hooks/router/useNavigate';
 
 const Block = styled.div`
     display: flex;
@@ -50,6 +54,11 @@ const Amount = styled(Num2)`
     flex-direction: row;
     align-items: center;
     gap: 8px;
+
+    svg:last-child {
+        height: 28px;
+        width: auto;
+    }
 `;
 
 const Error = styled.div`
@@ -94,6 +103,10 @@ export const BalanceSkeleton = () => {
     );
 };
 
+const BatteryBalanceIconStyled = styled(BatteryBalanceIcon)`
+    cursor: pointer;
+`;
+
 export const Balance: FC<{
     error?: Error | null;
     isFetching: boolean;
@@ -103,9 +116,12 @@ export const Balance: FC<{
     const client = useQueryClient();
     const network = getNetworkByAccount(account);
 
-    const tronWallet = useActiveTronWallet();
+    const isTronEnabled = useIsTronEnabledForActiveWallet();
 
     const { data: total } = useWalletTotalBalance();
+    const { data: batteryBalance } = useBatteryBalance();
+
+    const navigate = useNavigate();
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -125,8 +141,14 @@ export const Balance: FC<{
             <Amount>
                 <span>{formatFiatCurrency(fiat, total || 0)}</span>
                 <NetworkBadge network={network} />
+                {!!batteryBalance && (
+                    <BatteryBalanceIconStyled
+                        onClick={() => navigate(AppRoute.settings + WalletSettingsRoute.battery)}
+                        balance={batteryBalance}
+                    />
+                )}
             </Amount>
-            {tronWallet ? <AddressMultiChain /> : <AddressSingleChain />}
+            {isTronEnabled ? <AddressMultiChain /> : <AddressSingleChain />}
         </Block>
     );
 };
@@ -174,7 +196,7 @@ const SelectDropDownStyled = styled(SelectDropDown)`
     width: fit-content;
 `;
 
-const AddressMultiChain = () => {
+export const AddressMultiChain: FC<PropsWithChildren<{ top?: string }>> = ({ children, top }) => {
     const { t } = useTranslation();
     const account = useActiveAccount() as AccountMAM | AccountTonMnemonic;
     const activeWallet = account.activeTonWallet;
@@ -204,7 +226,7 @@ const AddressMultiChain = () => {
 
     return (
         <SelectDropDownStyled
-            top="0"
+            top={top ?? '0px'}
             right="-8px"
             width="200px"
             payload={() => (
@@ -234,15 +256,17 @@ const AddressMultiChain = () => {
                 </DropDownContent>
             )}
         >
-            <MultichainLine>
-                <Body2>{t('multichain')}</Body2>
-                <AccountAndWalletBadgesGroup
-                    account={account}
-                    walletId={account.activeTonWallet.id}
-                    size="s"
-                />
-                <ChevronDownIcon />
-            </MultichainLine>
+            {children || (
+                <MultichainLine>
+                    <Body2>{t('multichain')}</Body2>
+                    <AccountAndWalletBadgesGroup
+                        account={account}
+                        walletId={account.activeTonWallet.id}
+                        size="s"
+                    />
+                    <ChevronDownIcon />
+                </MultichainLine>
+            )}
         </SelectDropDownStyled>
     );
 };
@@ -250,12 +274,11 @@ const AddressMultiChain = () => {
 const AddressSingleChain = () => {
     const sdk = useAppSdk();
     const account = useActiveAccount();
-    const { t } = useTranslation();
     const network = useActiveTonNetwork();
     const address = formatAddress(account.activeTonWallet.rawAddress, network);
 
     return (
-        <Body onClick={() => sdk.copyToClipboard(address, t('address_copied'))}>
+        <Body onClick={() => sdk.copyToClipboard(address)}>
             {toShortValue(address)}
             <AccountAndWalletBadgesGroupStyled
                 account={account}

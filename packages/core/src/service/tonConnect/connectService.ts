@@ -7,7 +7,6 @@ import { Network } from '../../entries/network';
 import {
     CONNECT_EVENT_ERROR_CODES,
     ConnectEvent,
-    ConnectItem,
     ConnectItemReply,
     ConnectRequest,
     DAppManifest,
@@ -53,11 +52,15 @@ export function parseTonConnect(options: { url: string }): TonConnectParams | st
         const clientSessionId = query.id;
         const sessionCrypto = new SessionCrypto();
 
+        const url = new URL(options.url);
+        const isPro = url.protocol.includes('pro') || url.pathname.split('/').includes('pro');
+
         return {
             protocolVersion,
             request,
             clientSessionId,
-            sessionKeyPair: sessionCrypto.stringifyKeypair()
+            sessionKeyPair: sessionCrypto.stringifyKeypair(),
+            appName: isPro ? 'tonkeeper-pro' : 'tonkeeper'
         };
     } catch (e) {
         if (e instanceof Error) {
@@ -69,6 +72,7 @@ export function parseTonConnect(options: { url: string }): TonConnectParams | st
 
 export const getTonConnectParams = async (
     request: ConnectRequest,
+    appName: string,
     protocolVersion?: number,
     clientSessionId?: string
 ): Promise<TonConnectParams> => {
@@ -79,6 +83,7 @@ export const getTonConnectParams = async (
         protocolVersion: protocolVersion ?? 2,
         request,
         clientSessionId: clientSessionId ?? (await getSecureRandomBytes(32)).toString('hex'),
+        appName,
         sessionKeyPair: {
             secretKey: keyPair.secretKey.toString('hex'),
             publicKey: keyPair.publicKey.toString('hex')
@@ -107,11 +112,19 @@ export const getManifest = async (request: ConnectRequest) => {
 
     const manifest: DAppManifest = await response.json();
 
-    const isValid =
+    let isValid =
         manifest &&
         typeof manifest.url === 'string' &&
         typeof manifest.name === 'string' &&
         typeof manifest.iconUrl === 'string';
+
+    try {
+        if (!new URL(manifest.url).hostname.includes('.')) {
+            isValid = false;
+        }
+    } catch {
+        isValid = false;
+    }
 
     if (!isValid) {
         throw new Error('Manifest is not valid');
@@ -120,12 +133,12 @@ export const getManifest = async (request: ConnectRequest) => {
     return manifest;
 };
 
-function getPlatform(): DeviceInfo['platform'] {
+export function getBrowserPlatform(): DeviceInfo['platform'] {
     const platform =
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window.navigator as any)?.userAgentData?.platform || window.navigator.platform;
+        (window?.navigator as any)?.userAgentData?.platform || window?.navigator.platform;
 
-    const userAgent = window.navigator.userAgent;
+    const userAgent = window?.navigator.userAgent;
 
     const macosPlatforms = ['macOS', 'Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'];
     const windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'];
@@ -151,10 +164,15 @@ function getPlatform(): DeviceInfo['platform'] {
     return os!;
 }
 
-export const getDeviceInfo = (appVersion: string, maxMessages: number): DeviceInfo => {
+export const getDeviceInfo = (
+    platform: DeviceInfo['platform'],
+    appVersion: string,
+    maxMessages: number,
+    appName: string
+): DeviceInfo => {
     return {
-        platform: getPlatform()!,
-        appName: 'Tonkeeper',
+        platform: platform,
+        appName: appName,
         appVersion: appVersion,
         maxProtocolVersion: 2,
         features: [
@@ -163,6 +181,10 @@ export const getDeviceInfo = (appVersion: string, maxMessages: number): DeviceIn
                 name: 'SendTransaction',
                 maxMessages: maxMessages,
                 extraCurrencySupported: true
+            },
+            {
+                name: 'SignData',
+                types: ['text', 'binary', 'cell']
             }
         ]
     };
@@ -236,10 +258,15 @@ export const checkWalletConnectionOrDie = async (options: {
     }
 };
 
+export interface ReConnectPayload {
+    items: ConnectItemReply[];
+    maxMessages: number;
+}
+
 export const tonReConnectRequest = async (
     storage: IStorage,
     webViewUrl: string
-): Promise<ConnectItem[]> => {
+): Promise<ReConnectPayload> => {
     const connection = await getDappConnection(storage, webViewUrl);
     if (!connection) {
         throw new TonConnectError(
@@ -247,14 +274,23 @@ export const tonReConnectRequest = async (
             CONNECT_EVENT_ERROR_CODES.BAD_REQUEST_ERROR
         );
     }
-    return [
-        toTonAddressItemReply(
-            connection.wallet,
-            'network' in connection.wallet
-                ? (connection.wallet.network as Network)
-                : Network.MAINNET
-        )
-    ];
+
+    const maxMessages =
+        isStandardTonWallet(connection.wallet) && connection.wallet.version === WalletVersion.V5R1
+            ? 255
+            : 4;
+
+    return {
+        items: [
+            toTonAddressItemReply(
+                connection.wallet,
+                'network' in connection.wallet
+                    ? (connection.wallet.network as Network)
+                    : Network.MAINNET
+            )
+        ],
+        maxMessages
+    };
 };
 
 export const toTonAddressItemReply = (
@@ -304,7 +340,7 @@ export const tonConnectProofPayload = (
     const timestampBuffer = Buffer.allocUnsafe(8);
     timestampBuffer.writeBigInt64LE(BigInt(timestamp));
 
-    const domain = new URL(origin).host;
+    const domain = origin.includes('://') ? new URL(origin).host : origin;
     const domainBuffer = Buffer.from(domain);
 
     const domainLengthBuffer = Buffer.allocUnsafe(4);
@@ -438,7 +474,12 @@ export const saveWalletTonConnect = async (options: {
         event: 'connect',
         payload: {
             items: options.replyItems,
-            device: getDeviceInfo(options.appVersion, maxMessages)
+            device: getDeviceInfo(
+                getBrowserPlatform(),
+                options.appVersion,
+                maxMessages,
+                options.params.appName
+            )
         }
     };
 };

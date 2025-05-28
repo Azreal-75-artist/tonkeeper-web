@@ -1,5 +1,5 @@
 import { styled } from 'styled-components';
-import { Button } from '../../components/fields/Button';
+import { ButtonResponsiveSize } from '../../components/fields/Button';
 import { useTranslation } from '../../hooks/translation';
 import {
     useAddLedgerAccountMutation,
@@ -9,7 +9,6 @@ import {
 import React, { FC, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { LedgerTonTransport } from '@tonkeeper/core/dist/service/ledger/connector';
 import { Body2, H2Label2Responsive } from '../../components/Text';
-import { useNavigate } from 'react-router-dom';
 import { useAppSdk } from '../../hooks/appSdk';
 import { AppRoute } from '../../libs/routes';
 import { useNativeBackButton } from '../../components/BackButton';
@@ -21,12 +20,15 @@ import { UpdateWalletName } from '../../components/create/WalletName';
 import { toFormattedTonBalance } from '../../hooks/balance';
 import { AddWalletContext } from '../../components/create/AddWalletContext';
 import {
+    NotificationFooter,
+    NotificationFooterPortal,
     OnCloseInterceptor,
     useSetNotificationOnBack,
     useSetNotificationOnCloseInterceptor
 } from '../../components/Notification';
 import { LedgerConnectionSteps } from '../../components/ledger/LedgerConnectionSteps';
 import { useConfirmDiscardNotification } from '../../components/modals/ConfirmDiscardNotificationControlled';
+import { useNavigate } from '../../hooks/router/useNavigate';
 
 const ConnectLedgerWrapper = styled.div`
     display: flex;
@@ -53,14 +55,13 @@ export const CreateLedgerWallet: FC<{ afterCompleted: () => void }> = ({ afterCo
     const { t } = useTranslation();
     const navigate = useNavigate();
     const sdk = useAppSdk();
-    const back = useCallback(() => navigate(AppRoute.home), [navigate]);
-    useNativeBackButton(sdk, back);
+    const navigateHome = useCallback(() => navigate(AppRoute.home), [navigate]);
+    useNativeBackButton(sdk, navigateHome);
     const [moveNext, setMoveNext] = useState(false);
 
     const {
         isDeviceConnected,
         mutate: connectLedger,
-        isLoading: isLedgerConnecting,
         reset: resetConnection,
         data: tonTransport
     } = useConnectLedgerMutation();
@@ -82,13 +83,13 @@ export const CreateLedgerWallet: FC<{ afterCompleted: () => void }> = ({ afterCo
         }
     }, [tonTransport]);
 
-    const { navigateHome } = useContext(AddWalletContext);
-    useSetNotificationOnBack(navigateHome);
+    const { navigateHome: navigateBackNotification } = useContext(AddWalletContext);
+    useSetNotificationOnBack(navigateBackNotification);
 
     if (moveNext) {
         return (
             <ChooseLedgerAccounts
-                onCancel={back}
+                onCancel={afterCompleted}
                 tonTransport={tonTransport!}
                 afterCompleted={afterCompleted}
             />
@@ -107,18 +108,18 @@ export const CreateLedgerWallet: FC<{ afterCompleted: () => void }> = ({ afterCo
         <ConnectLedgerWrapper>
             <H2Styled>{t('ledger_connect_header')}</H2Styled>
             <LedgerConnectionSteps currentStep={currentStep} />
-            <ButtonsBlock>
-                <Button secondary onClick={back}>
-                    {t('cancel')}
-                </Button>
-                <Button
-                    primary
-                    loading={isLedgerConnecting || !!tonTransport}
-                    onClick={onStartConnection}
-                >
-                    {t('try_again')}
-                </Button>
-            </ButtonsBlock>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <ButtonsBlock>
+                        <ButtonResponsiveSize secondary onClick={afterCompleted}>
+                            {t('cancel')}
+                        </ButtonResponsiveSize>
+                        <ButtonResponsiveSize primary onClick={onStartConnection}>
+                            {t('try_again')}
+                        </ButtonResponsiveSize>
+                    </ButtonsBlock>
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </ConnectLedgerWrapper>
     );
 };
@@ -199,11 +200,13 @@ const ChooseLedgerAccounts: FC<{
 
     const { onOpen: openConfirmDiscard } = useConfirmDiscardNotification();
     const onCloseInterceptor = useMemo<OnCloseInterceptor>(() => {
-        return closeModal => {
+        return (closeModal, cancelCloseHandle) => {
             openConfirmDiscard({
                 onClose: discard => {
                     if (discard) {
                         closeModal();
+                    } else {
+                        cancelCloseHandle();
                     }
                 }
             });
@@ -264,19 +267,23 @@ const ChooseLedgerAccounts: FC<{
                     </ListBlock>
                 )}
             </AccountsListWrapper>
-            <ButtonsBlock>
-                <Button secondary onClick={onCancel}>
-                    {t('cancel')}
-                </Button>
-                <Button
-                    primary
-                    loading={!ledgerAccountData || isAdding}
-                    disabled={!chosenSomeAccounts}
-                    onClick={onAdd}
-                >
-                    {t('continue')}
-                </Button>
-            </ButtonsBlock>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <ButtonsBlock>
+                        <ButtonResponsiveSize secondary onClick={onCancel}>
+                            {t('cancel')}
+                        </ButtonResponsiveSize>
+                        <ButtonResponsiveSize
+                            primary
+                            loading={!ledgerAccountData || isAdding}
+                            disabled={!chosenSomeAccounts}
+                            onClick={onAdd}
+                        >
+                            {t('continue')}
+                        </ButtonResponsiveSize>
+                    </ButtonsBlock>
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </ConnectLedgerWrapper>
     );
 };

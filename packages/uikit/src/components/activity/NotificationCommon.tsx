@@ -37,6 +37,7 @@ import {
 import { tonAssetAddressToString } from '@tonkeeper/core/dist/entries/crypto/asset/ton-asset';
 import { AssetAmount } from '@tonkeeper/core/dist/entries/crypto/asset/asset-amount';
 import { assertUnreachableSoft } from '@tonkeeper/core/dist/utils/types';
+import { NotificationFooter, NotificationFooterPortal } from '../Notification';
 
 export const Title = styled(H2)<{ secondary?: boolean; tertiary?: boolean }>`
     display: flex;
@@ -150,7 +151,7 @@ export const ActionRecipientAddress: FC<{ address: string; name?: string; label?
     const sdk = useAppSdk();
 
     return (
-        <ListItem onClick={() => sdk.copyToClipboard(address, t('address_copied'))}>
+        <ListItem onClick={() => sdk.copyToClipboard(address)}>
             <ListItemPayload>
                 <Label>
                     {label ??
@@ -212,7 +213,7 @@ export const ActionSenderAddress: FC<{ address: string; name?: string }> = ({ ad
     const sdk = useAppSdk();
 
     return (
-        <ListItem onClick={() => sdk.copyToClipboard(address, t('address_copied'))}>
+        <ListItem onClick={() => sdk.copyToClipboard(address)}>
             <ListItemPayload>
                 <Label>{name ? t('transaction_sender_address') : t('transaction_sender')}</Label>
                 <Label1>{toShortValue(address)}</Label1>
@@ -263,7 +264,7 @@ export const ActionBeneficiaryDetails: FC<{ beneficiary: AccountAddress }> = ({ 
                     </ListItemPayload>
                 </ListItem>
             )}
-            <ListItem onClick={() => sdk.copyToClipboard(address, t('address_copied'))}>
+            <ListItem onClick={() => sdk.copyToClipboard(address)}>
                 <ListItemPayload>
                     <Label>
                         {beneficiary.name
@@ -297,7 +298,7 @@ export const ActionDeployerAddress: FC<{ address?: string }> = ({ address }) => 
     if (!address) return <></>;
 
     return (
-        <ListItem onClick={() => sdk.copyToClipboard(address, t('address_copied'))}>
+        <ListItem onClick={() => sdk.copyToClipboard(address)}>
             <ListItemPayload>
                 <Label>{t('add_edit_favorite_address_label')}</Label>
                 <Label1>{toShortValue(address)}</Label1>
@@ -455,7 +456,7 @@ export const ActionFeeDetailsUniversal: FC<{
                 {fee ? (
                     <ActionFeeDetailsUniversalValue fee={fee} />
                 ) : fee === null ? (
-                    <></>
+                    <>—</>
                 ) : (
                     <SpinnerIcon />
                 )}
@@ -581,6 +582,7 @@ const Block = styled.div`
     gap: 2rem;
     flex-direction: column;
     align-items: center;
+    margin-bottom: 2rem;
 `;
 
 export const ActionDetailsBlock: FC<PropsWithChildren<{ event: AccountEvent }>> = ({
@@ -606,9 +608,17 @@ export const CommonActionDetailsBlock: FC<PropsWithChildren<{ eventId: string; u
     return (
         <Block>
             {children}
-            <Button size="large" fullWidth onClick={() => sdk.openPage(url.replace('%s', eventId))}>
-                {t('nft_view_in_explorer')}
-            </Button>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <Button
+                        size="large"
+                        fullWidth
+                        onClick={() => sdk.openPage(url.replace('%s', eventId))}
+                    >
+                        {t('nft_view_in_explorer')}
+                    </Button>
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </Block>
     );
 };

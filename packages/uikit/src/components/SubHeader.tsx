@@ -1,5 +1,4 @@
 import React, { FC, PropsWithChildren, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import styled, { createGlobalStyle, css, useTheme } from 'styled-components';
 import { useAppSdk } from '../hooks/appSdk';
 import { useNativeBackButton } from './BackButton';
@@ -7,6 +6,7 @@ import { ChevronLeftIcon } from './Icon';
 import { H3 } from './Text';
 import { RoundedButton } from './fields/RoundedButton';
 import { DesktopBackButton } from './desktop/DesktopViewLayout';
+import { useNavigate } from "../hooks/router/useNavigate";
 
 export const WithHeadingDivider = styled.div``;
 
@@ -77,6 +77,8 @@ const Title = styled(H3)`
     margin-top: 1px;
     margin-bottom: 2px;
     min-height: 28px;
+    text-align: center;
+    padding: 0 36px;
 `;
 
 const SubHeaderBackButton = () => {

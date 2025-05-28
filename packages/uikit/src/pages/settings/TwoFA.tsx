@@ -1,10 +1,10 @@
-import { FC } from 'react';
+import React, { FC } from 'react';
 import { InnerBody } from '../../components/Body';
 import { SubHeader } from '../../components/SubHeader';
 import { Body2, Body3Class, Label2 } from '../../components/Text';
-import { Navigate } from 'react-router-dom';
 import {
     DesktopViewHeader,
+    DesktopViewHeaderContent,
     DesktopViewPageLayout
 } from '../../components/desktop/DesktopViewLayout';
 import { useIsFullWidthMode } from '../../hooks/useIsFullWidthMode';
@@ -35,6 +35,8 @@ import { localizationText } from '@tonkeeper/core/dist/entries/language';
 import { formattedDateTimeStamp } from '../../libs/dateTime';
 import { useSendTwoFACancelRecovery } from '../../hooks/blockchain/two-fa/useSendTwoFCancelRecovery';
 import { useSendTwoFARemove } from '../../hooks/blockchain/two-fa/useSendTwoFARemove';
+import { Navigate } from '../../components/shared/Navigate';
+import { HideOnReview } from '../../components/ios/HideOnReview';
 
 export const TwoFAPage = () => {
     const canViewTwoFA = useCanViewTwoFA();
@@ -53,6 +55,7 @@ export const TwoFAPage = () => {
 const ContentWrapper = styled.div`
     max-width: 468px;
     margin: 0 auto;
+    padding: 0 16px;
 `;
 
 const SpinnerWrapper = styled.div`
@@ -83,7 +86,7 @@ export const TwoFAPageLayout: FC = () => {
         return (
             <DesktopViewPageLayoutStyled>
                 <DesktopViewHeader borderBottom backButton>
-                    <Label2>{t('two_fa_long')}</Label2>
+                    <DesktopViewHeaderContent title={t('two_fa_long')} />
                 </DesktopViewHeader>
                 <TwoFAPageContentWrapper>
                     <TwoFAPageContent />
@@ -116,6 +119,10 @@ const TextHeadingBlock = styled.div`
     }
 `;
 
+const WarningBlockWrapper = styled.div`
+    padding: 0 16px;
+`;
+
 const WarningBlock = styled.div`
     background: ${p => hexToRGBA(p.theme.accentOrange, 0.16)};
     color: ${p => p.theme.accentOrange};
@@ -139,6 +146,11 @@ const WarningBlockText = styled.ul`
 
 const TwoFASetUpStyled = styled(TwoFASetUp)`
     margin: 16px auto 84px;
+
+    @media (max-width: 768px) {
+        flex-direction: column;
+        gap: 16px;
+    }
 `;
 
 const TwoFAPageContent: FC = () => {
@@ -184,15 +196,19 @@ const TwoFANotSetContent = () => {
                 </TextHeadingBlock>
             </ContentWrapper>
             <TwoFASetUpStyled />
-            <WarningBlock>
-                <WarningBlockText>
-                    <li>{t('two_fa_settings_warning_can_not_recover')}</li>
-                    <li>{t('two_fa_settings_warning_wallet_will_stop')}</li>
-                    <li>{t('two_fa_settings_warning_balance_required')}</li>
-                    <li>{t('two_fa_settings_warning_battery_gasless')}</li>
-                </WarningBlockText>
-                <ExclamationMarkTriangleIconStyled />
-            </WarningBlock>
+            <WarningBlockWrapper>
+                <WarningBlock>
+                    <WarningBlockText>
+                        <li>{t('two_fa_settings_warning_can_not_recover')}</li>
+                        <li>{t('two_fa_settings_warning_wallet_will_stop')}</li>
+                        <li>{t('two_fa_settings_warning_balance_required')}</li>
+                        <HideOnReview>
+                            <li>{t('two_fa_settings_warning_battery_gasless')}</li>
+                        </HideOnReview>
+                    </WarningBlockText>
+                    <ExclamationMarkTriangleIconStyled />
+                </WarningBlock>
+            </WarningBlockWrapper>
         </div>
     );
 };
@@ -202,6 +218,10 @@ const ActionButtonsContainer = styled.div`
     justify-content: center;
     margin: 0 auto 84px;
     gap: 8px;
+
+    @media (max-width: 768px) {
+        flex-direction: column;
+    }
 `;
 
 const TwoFAActiveContent = () => {
@@ -241,13 +261,11 @@ const TwoFAActiveContent = () => {
     const { mutateAsync: removeTwoFA, isLoading: isRemovingLoading } = useSendTwoFARemove();
     const { data: isRemovingProcess } = useIsTwoFARemovingProcess();
 
-    const onClickCloseDisconnect = async (confirmed?: boolean) => {
+    const onClickCloseDisconnect = async (confirmed: boolean) => {
         onCloseDisconnect();
-        if (!confirmed) {
-            return;
+        if (confirmed === true) {
+            await removeTwoFA();
         }
-
-        await removeTwoFA();
     };
 
     return (
@@ -271,15 +289,19 @@ const TwoFAActiveContent = () => {
                     </Button>
                 </ActionButtonsContainer>
             </ContentWrapper>
-            <WarningBlock>
-                <WarningBlockText>
-                    <li>{t('two_fa_settings_warning_can_not_recover')}</li>
-                    <li>{t('two_fa_settings_warning_wallet_will_stop')}</li>
-                    <li>{t('two_fa_settings_warning_balance_required')}</li>
-                    <li>{t('two_fa_settings_warning_battery_gasless')}</li>
-                </WarningBlockText>
-                <ExclamationMarkTriangleIconStyled />
-            </WarningBlock>
+            <WarningBlockWrapper>
+                <WarningBlock>
+                    <WarningBlockText>
+                        <li>{t('two_fa_settings_warning_can_not_recover')}</li>
+                        <li>{t('two_fa_settings_warning_wallet_will_stop')}</li>
+                        <li>{t('two_fa_settings_warning_balance_required')}</li>
+                        <HideOnReview>
+                            <li>{t('two_fa_settings_warning_battery_gasless')}</li>
+                        </HideOnReview>
+                    </WarningBlockText>
+                    <ExclamationMarkTriangleIconStyled />
+                </WarningBlock>
+            </WarningBlockWrapper>
             <DisableTwoFAConfirmNotification
                 isOpen={isOpenDisconnect}
                 onClose={onClickCloseDisconnect}

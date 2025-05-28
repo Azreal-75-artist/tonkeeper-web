@@ -1,7 +1,6 @@
 import { wordlist } from '@ton/crypto/dist/mnemonic/wordlist';
 import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled, { css } from 'styled-components';
-import { useAppContext } from '../../hooks/appContext';
 import { useAppSdk } from '../../hooks/appSdk';
 import { openIosKeyboard } from '../../hooks/ios';
 import { useTranslation } from '../../hooks/translation';
@@ -14,6 +13,9 @@ import { validateMnemonicTonOrMAM } from '@tonkeeper/core/dist/service/mnemonicS
 import { ToggleButton, ToggleButtonItem } from '../shared/ToggleButton';
 import { useActiveConfig } from '../../state/wallet';
 import { hexToRGBA } from '../../libs/css';
+import { handleSubmit } from '../../libs/form';
+import { NotificationFooter, NotificationFooterPortal } from '../Notification';
+import { useInputFocusScroll } from '../../hooks/keyboard/useInputFocusScroll';
 
 const Block = styled.div`
     display: flex;
@@ -33,10 +35,6 @@ const BlockSmallGap = styled(Block)`
         css`
             gap: 8px;
         `}
-`;
-
-const BottomButtonBlock = styled(Block)`
-    margin-bottom: 0;
 `;
 
 const HeadingBlock = styled(Block)`
@@ -142,20 +140,43 @@ const LinkStyled = styled(Body3)`
     cursor: pointer;
 `;
 
+const H2Label2ResponsiveStyled = styled(H2Label2Responsive)`
+    ${p =>
+        p.theme.displayType === 'compact' &&
+        css`
+            padding: 0 40px;
+        `}
+`;
+
 export const WordsGridAndHeaders: FC<{
     mnemonic: string[];
     type?: 'standard' | 'mam' | 'tron';
     allowCopy?: boolean;
-}> = ({ mnemonic, type, allowCopy }) => {
+    descriptionDown?: boolean;
+}> = ({ mnemonic, type, allowCopy, descriptionDown }) => {
     const { t } = useTranslation();
     const config = useActiveConfig();
     const sdk = useAppSdk();
     type ??= 'standard';
 
+    const MamNotice = type === 'mam' && (
+        <MamAccountCallout>
+            <div>
+                <Body3Secondary>{t('mam_account_explanation') + ' '}</Body3Secondary>
+                {!!config.mam_learn_more_url && (
+                    <LinkStyled onClick={() => sdk.openPage(config.mam_learn_more_url!)}>
+                        {t('learn_more')}
+                    </LinkStyled>
+                )}
+            </div>
+            <ExclamationMarkCircleIconStyled />
+        </MamAccountCallout>
+    );
+
     return (
         <>
             <HeadingBlock>
-                <H2Label2Responsive>
+                <H2Label2ResponsiveStyled>
                     {t(
                         type === 'mam'
                             ? 'secret_words_account_title'
@@ -163,25 +184,19 @@ export const WordsGridAndHeaders: FC<{
                             ? 'export_trc_20_wallet'
                             : 'secret_words_title'
                     )}
-                </H2Label2Responsive>
-                <Body>
-                    {t(mnemonic.length === 12 ? 'secret_words_caption_12' : 'secret_words_caption')}
-                </Body>
+                </H2Label2ResponsiveStyled>
+                {!descriptionDown && (
+                    <Body>
+                        {t(
+                            mnemonic.length === 12
+                                ? 'secret_words_caption_12'
+                                : 'secret_words_caption'
+                        )}
+                    </Body>
+                )}
             </HeadingBlock>
 
-            {type === 'mam' && (
-                <MamAccountCallout>
-                    <div>
-                        <Body3Secondary>{t('mam_account_explanation') + ' '}</Body3Secondary>
-                        {!!config.mam_learn_more_url && (
-                            <LinkStyled onClick={() => sdk.openPage(config.mam_learn_more_url!)}>
-                                {t('learn_more')}
-                            </LinkStyled>
-                        )}
-                    </div>
-                    <ExclamationMarkCircleIconStyled />
-                </MamAccountCallout>
-            )}
+            {!descriptionDown && MamNotice}
 
             {type === 'tron' && (
                 <TronAccountCallout>
@@ -199,6 +214,19 @@ export const WordsGridAndHeaders: FC<{
                     </Body1>
                 ))}
             </WorldsGridStyled>
+
+            {descriptionDown && (
+                <>
+                    {MamNotice}
+                    <Body>
+                        {t(
+                            mnemonic.length === 12
+                                ? 'secret_words_caption_12'
+                                : 'secret_words_caption'
+                        )}
+                    </Body>
+                </>
+            )}
 
             {allowCopy && (
                 <Button
@@ -230,9 +258,13 @@ export const Words: FC<{
         <CenterContainer>
             <WordsGridAndHeaders mnemonic={mnemonic} type={showMamInfo ? 'mam' : 'standard'} />
 
-            <ButtonResponsiveSize fullWidth primary marginTop onClick={onCheck}>
-                {t('continue')}
-            </ButtonResponsiveSize>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <ButtonResponsiveSize fullWidth primary marginTop onClick={onCheck}>
+                        {t('continue')}
+                    </ButtonResponsiveSize>
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </CenterContainer>
     );
 };
@@ -363,6 +395,8 @@ const WordInput: FC<{
             <Input
                 tabIndex={tabIndex}
                 autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 value={value}
                 onChange={e => onChange(e.target.value.toLocaleLowerCase())}
                 onFocus={() => setActive(true)}
@@ -432,7 +466,7 @@ export const Check: FC<{
         three.toLowerCase().trim() === mnemonic[test3 - 1];
 
     return (
-        <CenterContainer>
+        <CenterContainer $mobileFitContent>
             <Block>
                 <div>
                     <H2Label2Responsive>{t('check_words_title')}</H2Label2Responsive>
@@ -466,18 +500,20 @@ export const Check: FC<{
                     focusNext={() => (isValid ? onConfirm() : undefined)}
                 />
             </BlockSmallGap>
-            <BottomButtonBlock>
-                <ButtonResponsiveSize
-                    tabIndex={4}
-                    fullWidth
-                    primary
-                    loading={isLoading}
-                    disabled={!isValid}
-                    onClick={onConfirm}
-                >
-                    {t('continue')}
-                </ButtonResponsiveSize>
-            </BottomButtonBlock>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <ButtonResponsiveSize
+                        tabIndex={4}
+                        fullWidth
+                        primary
+                        loading={isLoading}
+                        disabled={!isValid}
+                        onClick={onConfirm}
+                    >
+                        {t('continue')}
+                    </ButtonResponsiveSize>
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </CenterContainer>
     );
 };
@@ -524,7 +560,6 @@ export const ImportWords: FC<{
 }> = ({ isLoading, onIsDirtyChange, onMnemonic, enableShortMnemonic = true }) => {
     const [wordsNumber, setWordsNumber] = useState<12 | 24>(24);
     const sdk = useAppSdk();
-    const { standalone } = useAppContext();
     const ref = useRef<HTMLDivElement>(null);
 
     const { t } = useTranslation();
@@ -605,8 +640,11 @@ export const ImportWords: FC<{
         }
     };
 
+    const scrollRef = useRef<HTMLFormElement>(null);
+    useInputFocusScroll(scrollRef);
+
     return (
-        <>
+        <form onSubmit={handleSubmit(onSubmit)} ref={scrollRef}>
             <Block>
                 <div>
                     <H2Label2Responsive>{t('import_wallet_title_web')}</H2Label2Responsive>
@@ -623,13 +661,13 @@ export const ImportWords: FC<{
                 <ToggleButtonStyled>
                     <ToggleButtonItem
                         active={wordsNumber === 24}
-                        onClick={() => setWordsNumber(24)}
+                        onClick={handleSubmit(() => setWordsNumber(24))}
                     >
                         <Label2>{t('import_wallet_24_words')}</Label2>
                     </ToggleButtonItem>
                     <ToggleButtonItem
                         active={wordsNumber === 12}
-                        onClick={() => setWordsNumber(12)}
+                        onClick={handleSubmit(() => setWordsNumber(12))}
                     >
                         <Label2>{t('import_wallet_12_words')}</Label2>
                     </ToggleButtonItem>
@@ -650,18 +688,17 @@ export const ImportWords: FC<{
                     ))}
                 </Inputs>
             </Block>
-            <BottomButtonBlock>
-                <ButtonResponsiveSize
-                    fullWidth
-                    primary
-                    loading={isLoading}
-                    onClick={onSubmit}
-                    bottom={standalone}
-                >
-                    {t('continue')}
-                </ButtonResponsiveSize>
-            </BottomButtonBlock>
-        </>
+            <ButtonResponsiveSize
+                fullWidth
+                primary
+                loading={isLoading}
+                onClick={onSubmit}
+                type="submit"
+                marginTop
+            >
+                {t('continue')}
+            </ButtonResponsiveSize>
+        </form>
     );
 };
 
@@ -680,22 +717,24 @@ export const SelectMnemonicType: FC<{
                 <H2Label2Responsive>{t('import_chose_mnemonic_type_title')}</H2Label2Responsive>
                 <Body>{t('import_chose_mnemonic_type_description')}</Body>
             </Block>
-            <BottomButtonBlock>
-                {isLoading ? (
-                    <ButtonResponsiveSize fullWidth secondary loading />
-                ) : (
-                    availableTypes.map(type => (
-                        <ButtonResponsiveSize
-                            key={type}
-                            fullWidth
-                            secondary
-                            onClick={() => onSelect(type)}
-                        >
-                            {t(`import_chose_mnemonic_option_${type}`)}
-                        </ButtonResponsiveSize>
-                    ))
-                )}
-            </BottomButtonBlock>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    {isLoading ? (
+                        <ButtonResponsiveSize fullWidth secondary loading />
+                    ) : (
+                        availableTypes.map(type => (
+                            <ButtonResponsiveSize
+                                key={type}
+                                fullWidth
+                                secondary
+                                onClick={() => onSelect(type)}
+                            >
+                                {t(`import_chose_mnemonic_option_${type}`)}
+                            </ButtonResponsiveSize>
+                        ))
+                    )}
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </>
     );
 };

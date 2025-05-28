@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Asset } from '@tonkeeper/core/dist/entries/crypto/asset/asset';
+import { Asset, isTonAsset } from '@tonkeeper/core/dist/entries/crypto/asset/asset';
 import { AssetAmount } from '@tonkeeper/core/dist/entries/crypto/asset/asset-amount';
 import { TON_ASSET, TRON_USDT_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
 import { RecipientData, isTonRecipientData, Estimation } from '@tonkeeper/core/dist/entries/send';
@@ -10,8 +10,8 @@ import React, {
     createContext,
     isValidElement,
     useContext,
-    useEffect,
-    useState
+    useState,
+    useEffect
 } from 'react';
 import styled from 'styled-components';
 import { useAppContext } from '../../hooks/appContext';
@@ -19,19 +19,21 @@ import { useAppSdk } from '../../hooks/appSdk';
 import { formatFiatCurrency } from '../../hooks/balance';
 import { useTranslation } from '../../hooks/translation';
 import { useAssetAmountFiatEquivalent, useAssetImage } from '../../state/asset';
-import { CheckmarkCircleIcon, ChevronLeftIcon, ExclamationMarkCircleIcon } from '../Icon';
+import { CheckmarkCircleIcon, ExclamationMarkCircleIcon } from '../Icon';
 import { Gap } from '../Layout';
 import { ListBlock } from '../List';
 import {
     FullHeightBlockResponsive,
+    NotificationBackButton,
     NotificationCancelButton,
+    NotificationFooter,
+    NotificationFooterPortal,
     NotificationTitleBlock
 } from '../Notification';
 import { Label2 } from '../Text';
 import { TransferComment } from '../activity/ActivityDetailsLayout';
 import { ActionFeeDetailsUniversal } from '../activity/NotificationCommon';
-import { RoundedButton } from '../fields/RoundedButton';
-import { Image, ImageMock, Info, SendingTitle, Title } from './Confirm';
+import { Image, ImageMock, Info, SendingTitle, Title, UnverifiedTokenLabel } from './Confirm';
 import { AmountListItem, RecipientListItem } from './ConfirmListItem';
 import { ButtonBlock, ConfirmMainButton, ConfirmMainButtonProps, ResultButton } from './common';
 import { UserCancelledError } from '../../libs/errors/UserCancelledError';
@@ -41,6 +43,8 @@ import {
     SenderTypeUserAvailable
 } from '../../hooks/blockchain/useSender';
 import { NotEnoughBalanceError } from '@tonkeeper/core/dist/errors/NotEnoughBalanceError';
+import { NotEnoughBatteryBalanceError } from '@tonkeeper/core/dist/errors/NotEnoughBatteryBalanceError';
+import { JettonVerificationType } from '@tonkeeper/core/dist/tonApiV2';
 
 type MutationProps = Pick<
     ReturnType<typeof useMutation<boolean, Error>>,
@@ -52,6 +56,7 @@ type ConfirmViewContextValue = {
     assetAmount: AssetAmount;
     estimation: {
         data: Pick<Estimation, 'fee'> | undefined;
+        error?: unknown;
         isLoading: boolean;
     };
     formState: {
@@ -134,7 +139,11 @@ export function ConfirmView<T extends Asset = Asset>({
     let additionalDetails = <ConfirmViewAdditionalBottomSlot />;
     let buttons = (
         <ConfirmViewButtonsSlot>
-            <ConfirmViewButtons MainButton={ConfirmMainButton} />
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <ConfirmViewButtons MainButton={ConfirmMainButton} />
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </ConfirmViewButtonsSlot>
     );
 
@@ -162,6 +171,13 @@ export function ConfirmView<T extends Asset = Asset>({
     const [done, setDone] = useState(false);
 
     const { standalone } = useAppContext();
+    const sdk = useAppSdk();
+
+    useEffect(() => {
+        if (estimation.error) {
+            sdk.hapticNotification('error');
+        }
+    }, [estimation.error]);
 
     const handleSubmit = async () => {
         if (isLoading) return false;
@@ -169,6 +185,7 @@ export function ConfirmView<T extends Asset = Asset>({
         try {
             const isDone = await mutateAsync();
             if (isDone) {
+                sdk.hapticNotification('success');
                 setDone(true);
                 setTimeout(() => {
                     setTimeout(() => client.invalidateQueries(), 100);
@@ -177,6 +194,7 @@ export function ConfirmView<T extends Asset = Asset>({
             }
             return isDone;
         } catch (e) {
+            sdk.hapticNotification('error');
             console.error(e);
             return false;
         }
@@ -228,13 +246,7 @@ export const ConfirmViewTitle: FC<PropsWithChildren> = () => {
     const { onClose, onBack } = useConfirmViewContext();
     return (
         <NotificationTitleBlock>
-            {onBack ? (
-                <RoundedButton onClick={onBack}>
-                    <ChevronLeftIcon />
-                </RoundedButton>
-            ) : (
-                <div />
-            )}
+            {onBack ? <NotificationBackButton onBack={onBack} /> : <div />}
             <NotificationCancelButton handleClose={() => onClose()} />
         </NotificationTitleBlock>
     );
@@ -272,6 +284,10 @@ export const ConfirmViewHeading: FC<PropsWithChildren<{ className?: string; titl
             ) : (
                 <ImageMock full />
             )}
+            {isTonAsset(assetAmount.asset) &&
+                assetAmount.asset.verification !== JettonVerificationType.Whitelist && (
+                    <UnverifiedTokenLabel>{t('approval_unverified_token')}</UnverifiedTokenLabel>
+                )}
             <SendingTitle>{t('confirm_sending_title')}</SendingTitle>
             <Title>{title}</Title>
         </Info>
@@ -315,7 +331,7 @@ export const ConfirmViewDetailsFee: FC<{
 
     return (
         <ActionFeeDetailsUniversal
-            fee={estimation.isLoading ? undefined : estimation.data?.fee}
+            fee={estimation.isLoading ? undefined : estimation.error ? null : estimation.data?.fee}
             onSenderTypeChange={onSenderTypeChange}
             availableSendersChoices={availableSendersChoices}
             selectedSenderType={selectedSenderType}
@@ -349,29 +365,15 @@ export const ConfirmViewButtonsSlot: FC<PropsWithChildren> = ({ children }) => <
 export const ConfirmViewButtons: FC<{
     MainButton: ConfirmMainButtonProps;
 }> = ({ MainButton }) => {
-    const sdk = useAppSdk();
-
     const {
         formState: { done, error, isLoading },
-        estimation: { isLoading: estimationLoading },
+        estimation: { isLoading: estimationLoading, data: estimation },
         onClose,
         handleSubmit
     } = useConfirmViewContext();
     const { t } = useTranslation();
 
     const isValid = !isLoading && !estimationLoading;
-
-    useEffect(() => {
-        if (done) {
-            sdk.hapticNotification('success');
-        }
-    }, [done]);
-
-    useEffect(() => {
-        if (error) {
-            sdk.hapticNotification('error');
-        }
-    }, [error]);
 
     if (done) {
         return (
@@ -383,13 +385,27 @@ export const ConfirmViewButtons: FC<{
     }
 
     if (error && !(error instanceof UserCancelledError)) {
-        let errorText =
-            error instanceof TxConfirmationCustomError ? error.message : t('send_publish_tx_error');
-        if (error instanceof NotEnoughBalanceError) {
-            errorText = t('confirm_error_insufficient_balance', {
-                balance: error.balance.stringAssetRelativeAmount,
-                required: error.requiredBalance.stringAssetRelativeAmount
-            });
+        let errorText;
+
+        switch (true) {
+            case error instanceof TxConfirmationCustomError:
+                errorText = error.message;
+                break;
+            case error instanceof NotEnoughBalanceError:
+                errorText = t('confirm_error_insufficient_balance_light');
+                break;
+            case error instanceof NotEnoughBatteryBalanceError:
+                errorText = t('confirm_error_insufficient_battery_balance');
+                break;
+            case error instanceof Error && error.message !== 'Response returned an error code':
+                errorText = error.message;
+                break;
+            default:
+                if (!estimation) {
+                    errorText = t('send_fee_estimation_error');
+                } else {
+                    errorText = t('send_publish_tx_error');
+                }
         }
 
         return (

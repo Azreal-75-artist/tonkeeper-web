@@ -1,20 +1,22 @@
 import { Body2, H2Label2Responsive } from '../Text';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import { useTranslation } from '../../hooks/translation';
 import { ListBlockDesktopAdaptive, ListItem, ListItemPayload } from '../List';
 import { TON_ASSET, TRON_USDT_ASSET } from '@tonkeeper/core/dist/entries/crypto/asset/constants';
 import { ColumnText } from '../Layout';
 import { Checkbox } from '../fields/Checkbox';
 import { AssetBlockchainBadge } from '../account/AccountBadge';
-import { Button } from '../fields/Button';
+import { ButtonResponsiveSize } from '../fields/Button';
 import {
     useIsTronEnabledForActiveWallet,
     useIsTronEnabledGlobally,
     useToggleIsTronEnabledForActiveWallet
 } from '../../state/tron/tron';
 import { FC, useEffect } from 'react';
+import { handleSubmit } from '../../libs/form';
+import { NotificationFooter, NotificationFooterPortal } from '../Notification';
 
-const Wrapper = styled.div`
+const Wrapper = styled.form`
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -23,7 +25,12 @@ const Wrapper = styled.div`
         margin-bottom: 4px;
         text-align: center;
     }
-    margin: 0 -16px;
+
+    ${p =>
+        p.theme.displayType === 'full-width' &&
+        css`
+            margin: 0 -16px;
+        `}
 `;
 
 const AssetImage = styled.img<{ $noRadius?: boolean }>`
@@ -56,12 +63,6 @@ const ListBlockStyled = styled(ListBlockDesktopAdaptive)`
     margin-bottom: 16px;
 `;
 
-const ButtonContainer = styled.div`
-    padding: 0 1rem;
-    width: 100%;
-    box-sizing: border-box;
-`;
-
 export const SelectWalletNetworks: FC<{ onContinue: (result: { tron: boolean }) => void }> = ({
     onContinue
 }) => {
@@ -80,8 +81,10 @@ export const SelectWalletNetworks: FC<{ onContinue: (result: { tron: boolean }) 
         return null;
     }
 
+    const onSubmit = () => onContinue({ tron: isTronEnabled });
+
     return (
-        <Wrapper>
+        <Wrapper onSubmit={handleSubmit(onSubmit)}>
             <H2Label2Responsive>{t('select_networks_modal_title')}</H2Label2Responsive>
             <Subtitle>{t('select_networks_modal_subtitle')}</Subtitle>
             <ListBlockStyled>
@@ -111,11 +114,19 @@ export const SelectWalletNetworks: FC<{ onContinue: (result: { tron: boolean }) 
                     </ListItemPayload>
                 </ListItem>
             </ListBlockStyled>
-            <ButtonContainer>
-                <Button fullWidth primary onClick={() => onContinue({ tron: isTronEnabled })}>
-                    {t('continue')}
-                </Button>
-            </ButtonContainer>
+            <NotificationFooterPortal>
+                <NotificationFooter>
+                    <ButtonResponsiveSize
+                        fullWidth
+                        primary
+                        onClick={onSubmit}
+                        type="submit"
+                        autoFocus
+                    >
+                        {t('continue')}
+                    </ButtonResponsiveSize>
+                </NotificationFooter>
+            </NotificationFooterPortal>
         </Wrapper>
     );
 };

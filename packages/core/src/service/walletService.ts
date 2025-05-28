@@ -2,7 +2,6 @@ import { UR } from '@keystonehq/keystone-sdk/dist/types/ur';
 import { parseTonAccount } from '@keystonehq/keystone-sdk/dist/wallet/hdKey';
 import { Address } from '@ton/core';
 import { WalletContractV4 } from '@ton/ton/dist/wallets/WalletContractV4';
-import queryString from 'query-string';
 import { IStorage } from '../Storage';
 import {
     AccountId,
@@ -37,7 +36,9 @@ import { FiatCurrencies } from '../entries/fiat';
 import { KeychainTrxAccountsProvider, TronAddressUtils } from '@ton-keychain/trx';
 import { TronWallet } from '../entries/tron/tron-wallet';
 import { ethers } from 'ethers';
-import { keyPairFromSecretKey } from '@ton/crypto';
+import { KeyPair, keyPairFromSecretKey } from '@ton/crypto';
+import nacl from 'tweetnacl';
+import queryString from 'query-string';
 
 export const createMultisigTonAccount = async (
     storage: IStorage,
@@ -51,7 +52,7 @@ export const createMultisigTonAccount = async (
     }
 ) => {
     const rawAddress = Address.parse(address).toRawString();
-    const { name, emoji } = await accountsStorage(storage).getNewAccountNameAndEmoji(
+    const { name, emoji } = await accountsStorage(storage).getNewMultisigAccountNameAndEmoji(
         rawAddress.split(':')[1]
     );
 
@@ -266,6 +267,24 @@ export const createStandardTonAccountByMnemonic = async (
     });
 };
 
+const keyPairFromSecretKeyOrSeed = (sk: string): KeyPair => {
+    switch (sk.length) {
+        case 128: {
+            return keyPairFromSecretKey(Buffer.from(sk, 'hex'));
+        }
+        case 64: {
+            const pair = nacl.sign.keyPair.fromSeed(Buffer.from(sk, 'hex'));
+            return {
+                secretKey: Buffer.from(pair.secretKey),
+                publicKey: Buffer.from(pair.publicKey)
+            };
+        }
+        default: {
+            throw new Error('Unexpected secretKey size');
+        }
+    }
+};
+
 export const createStandardTonAccountBySK = async (
     appContext: CreateWalletContext,
     storage: IStorage,
@@ -275,7 +294,7 @@ export const createStandardTonAccountBySK = async (
         auth: AuthPassword | Omit<AuthKeychain, 'keychainStoreKey'>;
     }
 ) => {
-    const keyPair = keyPairFromSecretKey(Buffer.from(sk, 'hex'));
+    const keyPair = keyPairFromSecretKeyOrSeed(sk);
 
     const publicKey = keyPair.publicKey.toString('hex');
 
@@ -466,61 +485,31 @@ export const getWalletsAddresses = (
     ) as Record<(typeof WalletVersions)[number], { address: Address; version: WalletVersion }>;
 };
 
-export const accountBySignerQr = async (
-    appContext: CreateWalletContext,
-    storage: IStorage,
-    qrCode: string
-): Promise<AccountTonOnly> => {
-    if (!qrCode.startsWith('tonkeeper://signer')) {
-        throw new Error('Unexpected QR code');
-    }
-
+export const parseSignerLink = (link: string): { publicKey: string; name: string } => {
     const {
         query: { pk, name }
-    } = queryString.parseUrl(qrCode);
+    } = queryString.parseUrl(link);
 
-    if (typeof pk != 'string') {
-        throw new Error('Unexpected QR code');
+    if (typeof pk !== 'string') {
+        throw new Error('Unexpected link');
     }
-    if (typeof name != 'string') {
-        throw new Error('Unexpected QR code');
+    if (typeof name !== 'string') {
+        throw new Error('Unexpected link');
     }
 
-    // TODO parse network from QR?
-    const network = Network.MAINNET;
-
-    const publicKey = pk;
-
-    // TODO support multiple wallets versions configuration
-    const active = await findWalletAddress(appContext, network, publicKey);
-
-    const { name: fallbackName, emoji } = await accountsStorage(storage).getNewAccountNameAndEmoji(
-        publicKey
-    );
-
-    return new AccountTonOnly(
-        publicKey,
-        name || fallbackName,
-        emoji,
-        { kind: 'signer' },
-        active.rawAddress,
-        [
-            {
-                id: active.rawAddress,
-                publicKey,
-                version: active.version,
-                rawAddress: active.rawAddress
-            }
-        ]
-    );
+    return {
+        publicKey: pk,
+        name
+    };
 };
 
-export const accountBySignerDeepLink = async (
+export const accountBySignerLink = async (
     appContext: CreateWalletContext,
     network: Network,
     storage: IStorage,
     publicKey: string,
-    name: string | null
+    name: string | null,
+    kind: 'signer-deeplink' | 'signer'
 ): Promise<AccountTonOnly> => {
     const active = await findWalletAddress(appContext, network, publicKey);
 
@@ -528,21 +517,14 @@ export const accountBySignerDeepLink = async (
         publicKey
     );
 
-    return new AccountTonOnly(
-        publicKey,
-        name || fallbackName,
-        emoji,
-        { kind: 'signer-deeplink' },
-        active.rawAddress,
-        [
-            {
-                id: active.rawAddress,
-                publicKey,
-                version: active.version,
-                rawAddress: active.rawAddress
-            }
-        ]
-    );
+    return new AccountTonOnly(publicKey, name || fallbackName, emoji, { kind }, active.rawAddress, [
+        {
+            id: active.rawAddress,
+            publicKey,
+            version: active.version,
+            rawAddress: active.rawAddress
+        }
+    ]);
 };
 
 export const accountByLedger = (
